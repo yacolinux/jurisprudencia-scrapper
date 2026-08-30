@@ -11,7 +11,7 @@
       <header class="topbar">
         <div class="brand-mark">Q</div>
         <div><p class="eyebrow">CONSULTA INTELIGENTE · STJ CORRIENTES</p><h1>Jurisprudencia asistida</h1></div>
-        <div class="top-actions"><span class="online"><i></i> MCP DISPONIBLE</span><a class="quiet" href="http://localhost:3002">Portal principal</a><a class="quiet" href="http://localhost:3000">Archivo local</a></div>
+        <div class="top-actions"><span class="online"><i></i> ARCHIVO LOCAL · SOLO LECTURA</span><a class="quiet" href="http://localhost:3002">Portal principal</a><a class="quiet" href="http://localhost:3000">Archivo local</a></div>
       </header>
 
       <section class="hero">
@@ -28,6 +28,7 @@
             <label for="searchText">Términos para el buscador <span>opcional</span><input id="searchText" placeholder="Ej.: amparo cobertura salud"></label>
             <label for="materia">Materia <span>opcional</span><input id="materia" placeholder="Ej.: Amparo"></label>
           </div>
+          <label class="remote-toggle"><input id="includeRemote" type="checkbox"><span><strong>Ampliar con consulta remota (MCP)</strong><small>Usa el portal oficial además del archivo local. No modifica ni descarga nada en esta aplicación.</small></span></label>
           <fieldset><legend>Tipo de respuesta</legend><div class="mode-grid"><label class="mode-option"><input type="radio" name="mode" value="single" checked><span><strong>Respuesta breve</strong><small>Una síntesis directa para orientarte.</small></span></label><label class="mode-option"><input type="radio" name="mode" value="report"><span><strong>Informe comparativo</strong><small>Más contexto y documentos recuperados.</small></span></label></div></fieldset>
           <div class="form-footer"><p><strong>El MCP hace el trabajo pesado.</strong><br>Consulta · detalle · texto PDF · síntesis LLM</p><button class="primary" id="submit" type="submit">Consultar con IA <span>↗</span></button></div>
         </form>
@@ -45,13 +46,13 @@
       <section id="error" class="card error" hidden></section>
 
       <section id="answer" class="card answer-card" hidden>
-        <div class="section-heading"><div><p class="eyebrow">RESPUESTA GENERADA</p><h2>Lectura asistida del material</h2></div><span class="pill">MCP + LLM</span></div>
+        <div class="section-heading"><div><p class="eyebrow">RESPUESTA GENERADA</p><h2>Lectura asistida del material</h2></div><span id="provider-badge" class="pill">ARCHIVO LOCAL + LLM</span></div>
         <div id="answerText" class="answer-text"></div>
         <div class="answer-meta"><span id="meta"></span><span>Verificá siempre el fallo original.</span></div>
       </section>
 
       <section id="results" class="results-section" hidden>
-        <div class="section-heading"><div><p class="eyebrow">MATERIAL RECUPERADO</p><h2>Resultados que sustentan la respuesta</h2></div><span class="muted">Desde el portal oficial</span></div>
+        <div class="section-heading"><div><p class="eyebrow">MATERIAL RECUPERADO</p><h2>Resultados que sustentan la respuesta</h2></div><span id="result-source" class="muted">Desde el archivo local</span></div>
         <div id="resultList" class="result-list"></div>
       </section>
 

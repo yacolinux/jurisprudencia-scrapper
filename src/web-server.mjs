@@ -8,6 +8,7 @@ import { ArchiveStore } from "./archive-store.mjs";
 import { BatchCollector, validateBatchInput } from "./collector.mjs";
 import { JobManager } from "./job-manager.mjs";
 import { synthesize } from "./ai.mjs";
+import { LocalArchiveSearch, resolveLocalPdf } from "./local-search.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const PUBLIC = resolve(process.env.PUBLIC_DIR || join(ROOT, "public"));
@@ -17,6 +18,7 @@ const IS_ARCHIVE = APP_MODE === "archive";
 const MAX_BODY = 100_000;
 const mcp = new LocalMcpClient({ timeoutMs: Number(process.env.MCP_TIMEOUT_MS || 120_000) });
 const DATA_DIR = resolve(process.env.DATA_DIR || join(ROOT, "data"));
+const localSearch = new LocalArchiveSearch(DATA_DIR);
 let queryQueue = Promise.resolve();
 
 const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml" };
@@ -71,11 +73,7 @@ function normalizeResult(result, detail, pdf) {
   };
 }
 
-async function runQuery(input) {
-  const question = clean(input.question);
-  if (question.length < 5) throw Object.assign(new Error("Escribí una consulta de al menos 5 caracteres"), { code: "INVALID_QUERY" });
-  const mode = input.mode === "report" ? "report" : "single";
-  const filters = input.filters && typeof input.filters === "object" ? input.filters : {};
+async function runRemoteQuery(question, input, filters) {
   const search = await mcp.callTool("search_jurisprudencia", {
     ...filters,
     text: searchText(question, input.searchText || filters.text),
@@ -93,15 +91,78 @@ async function runQuery(input) {
     }
     documents.push(normalizeResult(result, detail, pdf));
   }
+  return { search, documents };
+}
+
+function resultKey(result) {
+  return result.id ? "id:" + result.id : result.source || result.pdfUrl || result.localPath || result.title;
+}
+
+function combineResults(local, remote) {
+  const results = [];
+  const seen = new Set();
+  for (const result of [...local, ...remote]) {
+    const key = resultKey(result);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push(result);
+  }
+  return results;
+}
+
+async function serveLocalFile(request, response, url) {
+  const relativePath = url.searchParams.get("path");
+  if (!relativePath) return json(response, 400, { error: "Falta el parámetro path" });
+  try {
+    const file = resolveLocalPdf(DATA_DIR, relativePath);
+    const data = await readFile(file);
+    response.writeHead(200, { "content-type": "application/pdf", "content-disposition": "inline; filename=\"" + file.split("/").pop() + "\"", "cache-control": "no-store" });
+    response.end(data);
+  } catch (error) {
+    return json(response, error.code === "LOCAL_FILE_NOT_ALLOWED" ? 400 : 404, { error: error.message || "PDF local no encontrado" });
+  }
+}
+
+async function runQuery(input) {
+  const question = clean(input.question);
+  if (question.length < 5) throw Object.assign(new Error("Escribí una consulta de al menos 5 caracteres"), { code: "INVALID_QUERY" });
+  const mode = input.mode === "report" ? "report" : "single";
+  const filters = input.filters && typeof input.filters === "object" ? input.filters : {};
+  const local = await localSearch.search({ question, searchText: input.searchText, filters, limit: Number(process.env.MAX_DOCUMENTS || 3) });
+  let search = local.search;
+  let documents = local.documents;
+  let remote = { requested: input.includeRemote === true, enabled: false, total: 0 };
+  let remoteWarning = null;
+  if (input.includeRemote === true) {
+    try {
+      const fetched = await runRemoteQuery(question, input, filters);
+      const results = combineResults(local.search.results, fetched.search.results || []);
+      const localKeys = new Set(local.documents.map(resultKey));
+      const remoteOnlyDocuments = fetched.documents.filter((document) => !localKeys.has(resultKey(document)));
+      search = { ...local.search, source: "local-archive+mcp", total: results.length, results };
+      documents = [...local.documents, ...remoteOnlyDocuments];
+      remote = { requested: true, enabled: true, total: fetched.search.total || fetched.search.results?.length || 0, returned: fetched.search.results?.length || 0 };
+    } catch (error) {
+      remoteWarning = "La ampliación remota no estuvo disponible: " + error.message;
+      remote = { requested: true, enabled: false, total: 0, error: error.message };
+    }
+  }
   const synthesis = await synthesize({ question, mode, search, documents });
   return {
     question,
     mode,
+    queryMode: input.includeRemote === true ? "local+remote" : "local-only",
+    readOnly: true,
+    sources: {
+      local: { enabled: true, indexed: local.indexed, periodCandidates: local.periodCandidates, scannedPdfs: local.scannedPdfs, matchStrategy: local.matchStrategy, updatedAt: local.updatedAt },
+      remote
+    },
     search: { source: search.source, total: search.total, page: search.page, totalPages: search.totalPages, results: search.results || [] },
     documents,
     ...synthesis,
     generatedAt: new Date().toISOString(),
-    accessMode: process.env.JURIS_ACCESS_MODE || "auto"
+    accessMode: process.env.JURIS_ACCESS_MODE || "auto",
+    ...(remoteWarning ? { warning: remoteWarning } : {})
   };
 }
 
@@ -150,7 +211,7 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   try {
     if (request.method === "GET" && url.pathname === "/api/health") {
-      return json(response, 200, { ok: true, service: `${APP_MODE}-jurisprudencia-web`, appMode: APP_MODE, mcpStarted: mcp.started, accessMode: process.env.JURIS_ACCESS_MODE || "auto", ...(IS_ARCHIVE ? { dataDir: DATA_DIR, archive: await archiveStore.summary() } : {}) });
+      return json(response, 200, { ok: true, service: `${APP_MODE}-jurisprudencia-web`, appMode: APP_MODE, mcpStarted: mcp.started, readOnlyQuery: !IS_ARCHIVE, dataDir: DATA_DIR, accessMode: process.env.JURIS_ACCESS_MODE || "auto", ...(IS_ARCHIVE ? { archive: await archiveStore.summary() } : {}) });
     }
     if (request.method === "GET" && url.pathname === "/api/diagnose") {
       const diagnosis = await enqueue(() => mcp.callTool("diagnose_jurisprudencia_access"));
@@ -161,6 +222,7 @@ const server = createServer(async (request, response) => {
       const result = await enqueue(() => runQuery(input));
       return json(response, 200, result);
     }
+    if (request.method === "GET" && url.pathname === "/api/local/file") return serveLocalFile(request, response, url);
     if (IS_ARCHIVE && request.method === "GET" && url.pathname === "/api/archive/summary") return json(response, 200, await archiveStore.summary());
     if (IS_ARCHIVE && request.method === "GET" && url.pathname === "/api/archive/documents") {
       return json(response, 200, { documents: await archiveStore.list({ year: url.searchParams.get("year"), month: url.searchParams.get("month"), limit: url.searchParams.get("limit") }) });
@@ -189,7 +251,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET") return serveStatic(request, response, url.pathname);
     return json(response, 405, { error: "Método no permitido" });
   } catch (error) {
-    const status = error.code === "JOB_ALREADY_RUNNING" ? 409 : error.code === "NO_RETRY_ITEMS" ? 422 : ["INVALID_QUERY", "INVALID_JSON", "BODY_TOO_LARGE", "INVALID_YEAR", "INVALID_MONTH"].includes(error.code) ? 400 : error.code === "CHALLENGE_REQUIRED" ? 503 : 502;
+    const status = error.code === "JOB_ALREADY_RUNNING" ? 409 : error.code === "NO_RETRY_ITEMS" ? 422 : ["INVALID_QUERY", "INVALID_JSON", "BODY_TOO_LARGE", "INVALID_YEAR", "INVALID_MONTH", "LOCAL_FILE_NOT_ALLOWED"].includes(error.code) ? 400 : error.code === "CHALLENGE_REQUIRED" ? 503 : 502;
     return json(response, status, errorPayload(error));
   }
 });

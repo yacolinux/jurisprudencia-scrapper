@@ -30,7 +30,7 @@
       Cliente HTTP o navegador Chromium
           ↓
       Portal remoto de jurisprudencia</pre>
-      <p>La app de consulta usa este MCP para obtener resultados, detalles y texto PDF; luego el modelo configurado en <code>OPENCODE_MODEL</code> prepara la respuesta.</p>
+      <p>La app de consulta trabaja primero con el archivo local en modo no destructivo. Cuando se activa la opción remota, usa este MCP para agregar resultados, detalles y texto PDF del portal; luego el modelo configurado en <code>OPENCODE_MODEL</code> prepara la respuesta.</p>
     </section>
     <section class="panel"><h2>Cloudflare y acceso</h2>
       <p>El acceso HTTP directo puede recibir un challenge. Por eso el cliente admite Chromium/Xvfb y también reutilizar un Chrome externo mediante <code>JURIS_CDP_URL=http://127.0.0.1:9222</code>. Si el challenge no puede resolverse automáticamente, la ejecución queda informada para reintento manual.</p>

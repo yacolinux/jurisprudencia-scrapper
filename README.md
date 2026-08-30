@@ -7,7 +7,7 @@ Suite de cuatro aplicaciones para consultar el portal remoto del Superior Tribun
 | Aplicación | Puerto | Función |
 |---|---:|---|
 | Archivo / descarga | 3000 | Captura mensual o anual, caché, reintentos y navegación de PDFs |
-| Consulta | 3001 | Preguntas sobre resultados remotos, detalles y texto PDF |
+| Consulta | 3001 | Preguntas sobre el archivo local; MCP remoto opcional |
 | Portal principal | 3002 | Acceso a las dos apps y documentación del MCP |
 | MCP por stdio | — | Herramientas para clientes MCP/OpenCode |
 
@@ -80,7 +80,15 @@ Abrir http://localhost:3002. El directorio data pertenece al proyecto que ejecut
 - `GET /api/archive/file?path=...` sirve un PDF ya guardado.
 - `GET /api/health` y `GET /api/diagnose` informan el estado de la app y del acceso remoto.
 
-La app de consulta mantiene el endpoint compatible POST /api/query en el puerto 3001, con un cuerpo como { "question": "fallos sobre amparo", "searchText": "", "mode": "single", "filters": {} }.
+La app de consulta mantiene el endpoint compatible POST /api/query en el puerto 3001, con un cuerpo como { "question": "fallos sobre amparo", "searchText": "", "mode": "single", "includeRemote": false, "filters": {} }.
+
+## Consulta local y ampliación remota
+
+La consulta trabaja por defecto en modo local y no destructivo. Lee data/manifest.json, metadatos laterales y los PDFs existentes; cuando hace falta, extrae texto mediante pdftotext sin escribir archivos auxiliares. El servicio monta data como solo lectura (data:ro), por lo que esta aplicación no puede borrar, reemplazar, renombrar ni descargar documentos.
+
+El checkbox Ampliar con consulta remota (MCP) agrega la búsqueda oficial, el detalle y el texto PDF remoto a los resultados locales. Si el sitio remoto o Cloudflare no están disponibles, la aplicación conserva la respuesta local y devuelve la advertencia, sin convertir la consulta local en un fallo.
+
+La respuesta de la API incluye queryMode, readOnly y sources.local/sources.remote para distinguir el origen de cada material. LOCAL_PDF_SCAN_LIMIT limita el escaneo de PDFs cuando no hay coincidencias en los metadatos.
 
 ## Captura de un año completo
 

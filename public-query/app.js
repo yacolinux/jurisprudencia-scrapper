@@ -9,7 +9,8 @@ $("form").addEventListener("submit", async (event) => {
   $("error").hidden = true;
   $("answer").hidden = true;
   $("results").hidden = true;
-  $("status").textContent = "Consultando el portal remoto…";
+  const includeRemote = $("includeRemote").checked;
+  $("status").textContent = includeRemote ? "Leyendo archivo local y ampliando con el MCP remoto…" : "Buscando en el archivo local (modo solo lectura)…";
   const filters = {};
   if ($("materia").value.trim()) filters.materias = [$("materia").value.trim()];
   try {
@@ -20,13 +21,20 @@ $("form").addEventListener("submit", async (event) => {
         question: $("question").value,
         searchText: $("searchText").value,
         mode: document.querySelector('input[name="mode"]:checked').value,
+        includeRemote,
         filters
       })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "La consulta falló");
     $("answerText").innerHTML = markdown(data.answer || "No se generó una respuesta.");
-    $("meta").textContent = (data.search?.total ?? 0) + " resultados encontrados · " + (data.documents?.length ?? 0) + " documentos analizados";
+    const localInfo = data.sources?.local;
+    const remoteInfo = data.sources?.remote;
+    const remoteUsed = data.queryMode === "local+remote" && remoteInfo?.enabled;
+    $("provider-badge").textContent = remoteUsed ? "ARCHIVO LOCAL + MCP + LLM" : "ARCHIVO LOCAL + LLM";
+    $("result-source").textContent = remoteUsed ? "Archivo local y portal oficial" : "Desde el archivo local";
+    const remoteText = remoteInfo?.requested ? " · MCP: " + (remoteInfo.enabled ? (remoteInfo.returned || remoteInfo.total || 0) + " resultados" : "no disponible") : "";
+    $("meta").textContent = (data.search?.total ?? 0) + " resultados mostrados · " + (data.documents?.length ?? 0) + " documentos analizados · " + (localInfo?.indexed ?? 0) + " indexados localmente" + remoteText;
     $("answer").hidden = false;
     $("resultList").innerHTML = (data.search?.results || []).map((item) => {
       const document = (data.documents || []).find((candidate) => String(candidate.id) === String(item.id));
@@ -36,7 +44,7 @@ $("form").addEventListener("submit", async (event) => {
     }).join("") || "<p class=\"muted\">No hubo resultados.</p>";
     $("results").hidden = false;
     $("raw").textContent = JSON.stringify(data, null, 2);
-    $("status").textContent = "Consulta completada: " + new Date(data.generatedAt || Date.now()).toLocaleString("es-AR");
+    $("status").textContent = (data.readOnly ? "✓ Modo no destructivo · " : "") + "Consulta completada: " + new Date(data.generatedAt || Date.now()).toLocaleString("es-AR") + (data.warning ? " · " + data.warning : "");
   } catch (error) {
     $("error").textContent = error.message;
     $("error").hidden = false;

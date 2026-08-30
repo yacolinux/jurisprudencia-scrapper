@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ArchiveStore, archiveRelativePath, parseCourtDate } from "../src/archive-store.mjs";
 import { BatchCollector, validateBatchInput } from "../src/collector.mjs";
+import { LocalArchiveSearch, resolveLocalPdf } from "../src/local-search.mjs";
 
 test("interpreta fechas del portal y genera una ruta humana", () => {
   const date = parseCourtDate("25-08-2026");
@@ -47,4 +48,28 @@ test("Todo el año usa la paginación anual compatible y procesa secuencialmente
   assert.equal(result.monthsCompleted, 12);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].text, undefined);
+});
+
+test("la búsqueda local lee el manifest sin crearlo ni modificarlo", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archivo-jurisprudencia-local-test-"));
+  try {
+    const manifest = {
+      version: 1,
+      updatedAt: "2026-08-30T00:00:00.000Z",
+      documents: [
+        { id: 123, materia: "Amparo", fecha: "25-08-2026", caratula: "Acción de cobertura de salud", path: "2026/08-agosto/semana-35/25-08-2026/amparo/fallo.pdf" },
+        { id: 456, materia: "Penal", fecha: "20-08-2026", caratula: "Recurso de queja", path: "2026/08-agosto/semana-34/20-08-2026/penal/fallo.pdf" }
+      ]
+    };
+    await writeFile(join(root, "manifest.json"), JSON.stringify(manifest));
+    const search = new LocalArchiveSearch(root, { pdfScanLimit: 0 });
+    const result = await search.search({ question: "cobertura de salud", limit: 5 });
+    assert.equal(result.search.source, "local-archive");
+    assert.equal(result.search.results[0].id, 123);
+    assert.equal(result.indexed, 2);
+    assert.throws(() => resolveLocalPdf(root, "../outside.pdf"), /no permitido/);
+    assert.equal((await readFile(join(root, "manifest.json"), "utf8")).includes("Acción de cobertura"), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
