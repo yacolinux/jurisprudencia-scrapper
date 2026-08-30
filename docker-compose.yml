@@ -1,0 +1,30 @@
+services:
+  jurisprudencia-web:
+    build:
+      context: .
+      network: host
+    # En este host la red bridge no permite conexiones salientes HTTPS al
+    # portal. La red host conserva el acceso a localhost:3000 y al portal.
+    network_mode: host
+    environment:
+      PORT: 3000
+      JURIS_ACCESS_MODE: ${JURIS_ACCESS_MODE:-auto}
+      JURIS_HEADLESS: ${JURIS_HEADLESS:-0}
+      JURIS_USE_XVFB: ${JURIS_USE_XVFB:-1}
+      # Opcional: http://127.0.0.1:9222 para reutilizar un Chrome externo
+      # iniciado manualmente con --remote-debugging-port=9222.
+      JURIS_CDP_URL: ${JURIS_CDP_URL:-}
+      JURIS_CHALLENGE_TIMEOUT_MS: ${JURIS_CHALLENGE_TIMEOUT_MS:-60000}
+      MAX_DOCUMENTS: ${MAX_DOCUMENTS:-3}
+      MAX_PDF_CHARS: ${MAX_PDF_CHARS:-18000}
+      # Modelo gratuito de OpenCode validado dentro del contenedor. Se puede
+      # desactivar con OPENCODE_ENABLED=0 en un archivo .env local.
+      OPENCODE_ENABLED: ${OPENCODE_ENABLED:-1}
+      OPENCODE_MODEL: ${OPENCODE_MODEL:-opencode/nemotron-3.5-lightning-free}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+    init: true
+    restart: "no"
+    # El seccomp predeterminado del host bloquea los namespaces requeridos por
+    # Chromium. Chromium sigue ejecutándose con chromium-sandbox habilitado.
+    security_opt:
+      - seccomp=unconfined

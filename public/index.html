@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jurisprudencia · MVP MCP</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand-mark">J</div>
+        <div>
+          <p class="eyebrow">MCP · STJ CORRIENTES</p>
+          <h1>Consulta jurídica en una sola ejecución</h1>
+        </div>
+        <button class="diagnose" id="diagnose">Verificar MCP</button>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="kicker">FUENTE OFICIAL + PROCESAMIENTO IA</p>
+          <h2>Una pregunta. Un expediente de contexto. Una respuesta verificable.</h2>
+          <p class="lede">Probá el flujo completo: la app consulta el MCP de jurisprudencia, recupera fallos públicos y prepara una salida preliminar con fuentes.</p>
+        </div>
+        <div class="hero-note"><span>01</span><p>Sin chat persistente<br />ni autenticación</p></div>
+      </section>
+
+      <section class="workspace">
+        <form id="query-form" class="card query-card">
+          <div class="card-heading"><div><p class="eyebrow">EJECUTAR CONSULTA</p><h3>¿Qué necesitás investigar?</h3></div><span class="status-dot">ONLINE</span></div>
+          <label for="question">Pregunta jurídica</label>
+          <textarea id="question" name="question" rows="6" placeholder="Ej.: ¿Qué criterios recientes aparecen en fallos de amparo contra el Instituto de Previsión Social?" required></textarea>
+          <div class="form-grid">
+            <div><label for="searchText">Términos de búsqueda <span>(opcional)</span></label><input id="searchText" name="searchText" placeholder="amparo Instituto de Previsión Social" /></div>
+            <div><label for="materia">Materia <span>(opcional)</span></label><select id="materia" name="materia"><option value="">Todas</option><option>Amparo</option><option>Civil y Comercial</option><option>Laboral</option><option>Penal</option><option>Menores</option><option>Electoral</option></select></div>
+          </div>
+          <div class="form-footer">
+            <div class="segmented"><label><input type="radio" name="mode" value="single" checked /><span>Respuesta puntual</span></label><label><input type="radio" name="mode" value="report" /><span>Reporte preliminar</span></label></div>
+            <button class="primary" type="submit" id="submit">Consultar <span>↗</span></button>
+          </div>
+          <p class="form-hint">La búsqueda recupera hasta 3 documentos y hasta 18.000 caracteres por PDF para mantener el MVP ágil.</p>
+        </form>
+
+        <aside class="card flow-card">
+          <p class="eyebrow">QUÉ PASA DETRÁS</p>
+          <div class="flow"><div class="flow-item active"><b>01</b><span>Pregunta one-shot</span></div><i></i><div class="flow-item"><b>02</b><span>Herramientas MCP</span></div><i></i><div class="flow-item"><b>03</b><span>Contexto de fallos</span></div><i></i><div class="flow-item"><b>04</b><span>Respuesta IA</span></div></div>
+          <div class="tech-note"><strong>Modo de acceso</strong><span id="access-mode">auto · directo + fallback Xvfb</span></div>
+          <div class="tech-note"><strong>Modelo</strong><span id="ai-mode">fallback local reproducible</span></div>
+        </aside>
+      </section>
+
+      <section id="loading" class="card loading hidden"><div class="spinner"></div><div><strong>Consultando el MCP…</strong><p>El portal puede tardar unos segundos mientras valida la sesión.</p></div></section>
+      <section id="error" class="card error hidden"><div class="error-icon">!</div><div><strong id="error-title">No se pudo completar la consulta</strong><p id="error-message"></p><pre id="error-state" class="hidden"></pre></div></section>
+      <section id="result" class="result hidden">
+        <div class="result-header"><div><p class="eyebrow">SALIDA DE LA EJECUCIÓN</p><h2 id="result-title">Resultado</h2></div><button class="ghost" id="new-query">Nueva consulta</button></div>
+        <div class="result-grid"><article class="card answer-card"><div class="answer-meta"><span id="provider-badge">LOCAL</span><span id="generated-at"></span></div><div id="answer" class="answer"></div></article><aside class="card sources-card"><div class="card-heading"><div><p class="eyebrow">EVIDENCIA RECUPERADA</p><h3 id="source-count">Fuentes</h3></div></div><div id="sources"></div></aside></div>
+        <details class="raw-details"><summary>Ver datos MCP crudos</summary><pre id="raw"></pre></details>
+        <p class="disclaimer">Prototipo de investigación. No reemplaza el análisis profesional ni la lectura del fallo original.</p>
+      </section>
+      <footer><span>api-remota / mvp</span><span>STJ Corrientes · fuente pública</span></footer>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
