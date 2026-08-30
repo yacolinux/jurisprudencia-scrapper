@@ -8,7 +8,7 @@ import { ArchiveStore } from "./archive-store.mjs";
 import { BatchCollector, validateBatchInput } from "./collector.mjs";
 import { JobManager } from "./job-manager.mjs";
 import { synthesize } from "./ai.mjs";
-import { LocalArchiveSearch, resolveLocalPdf } from "./local-search.mjs";
+import { LocalArchiveSearch, resolveLocalMarkdown, resolveLocalMetadata, resolveLocalPdf } from "./local-search.mjs";
 import { archiveMissingRemote } from "./remote-archive.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -174,6 +174,19 @@ async function serveLocalFile(request, response, url) {
   }
 }
 
+async function serveLocalText(request, response, url, kind) {
+  const relativePath = url.searchParams.get("path");
+  if (!relativePath) return json(response, 400, { error: "Falta el parámetro path" });
+  try {
+    const file = kind === "markdown" ? resolveLocalMarkdown(DATA_DIR, relativePath) : resolveLocalMetadata(DATA_DIR, relativePath);
+    const data = await readFile(file, "utf8");
+    response.writeHead(200, { "content-type": kind === "markdown" ? "text/markdown; charset=utf-8" : "application/json; charset=utf-8", "content-disposition": "inline", "cache-control": "no-store" });
+    response.end(data);
+  } catch (error) {
+    return json(response, error.code === "LOCAL_FILE_NOT_ALLOWED" ? 400 : 404, { error: error.message || "Documento local no encontrado" });
+  }
+}
+
 async function runQuery(input) {
   const question = clean(input.question);
   if (question.length < 5) throw Object.assign(new Error("Escribí una consulta de al menos 5 caracteres"), { code: "INVALID_QUERY" });
@@ -280,6 +293,8 @@ const server = createServer(async (request, response) => {
       return json(response, 200, result);
     }
     if (request.method === "GET" && url.pathname === "/api/local/file") return serveLocalFile(request, response, url);
+    if (request.method === "GET" && url.pathname === "/api/local/markdown") return serveLocalText(request, response, url, "markdown");
+    if (request.method === "GET" && url.pathname === "/api/local/metadata") return serveLocalText(request, response, url, "metadata");
     if (IS_ARCHIVE && request.method === "GET" && url.pathname === "/api/archive/summary") return json(response, 200, await archiveStore.summary());
     if (IS_ARCHIVE && request.method === "GET" && url.pathname === "/api/archive/documents") {
       return json(response, 200, { documents: await archiveStore.list({ year: url.searchParams.get("year"), month: url.searchParams.get("month"), limit: url.searchParams.get("limit") }) });

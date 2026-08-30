@@ -1,7 +1,9 @@
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const markdown = (value) => escapeHtml(value).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>");
-const safeUrl = (value) => /^(?:https?:\/\/|\/api\/local\/file\?path=)/i.test(String(value || "")) ? escapeHtml(value) : "";
+const safeUrl = (value) => /^(?:https?:\/\/|\/api\/local\/(?:file|markdown|metadata)\?path=)/i.test(String(value || "")) ? escapeHtml(value) : "";
+const localUrl = (kind, path) => path ? "/api/local/" + kind + "?path=" + encodeURIComponent(path) : "";
+const fileName = (path) => String(path || "").split("/").filter(Boolean).pop() || "archivo sin nombre";
 
 $("form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -44,6 +46,20 @@ $("form").addEventListener("submit", async (event) => {
       const pdf = pdfUrl ? "<a class=\"pdf\" href=\"" + pdfUrl + "\" target=\"_blank\" rel=\"noreferrer\">PDF disponible ↗</a>" : "<span>PDF no recuperado</span>";
       return "<article class=\"result\"><h3>" + escapeHtml(item.caratula || item.fallo || "Resultado") + "</h3><p>" + escapeHtml(item.fallo || "Fallo recuperado del portal oficial") + "</p><div class=\"result-meta\"><span>" + escapeHtml(item.materia || "Materia no indicada") + "</span><span>" + escapeHtml(item.fecha || "Fecha no indicada") + "</span><span>" + escapeHtml(item.expediente || "") + "</span>" + pdf + "</div></article>";
     }).join("") || "<p class=\"muted\">No hubo resultados.</p>";
+    $("sourceList").innerHTML = (data.documents || []).map((document, index) => {
+      const mdPath = document.markdownPath || (document.localPath || "").replace(/\.pdf$/i, ".md");
+      const jsonPath = document.metadataPath || (document.localPath || "").replace(/\.pdf$/i, ".pdf.json");
+      const mdUrl = safeUrl(localUrl("markdown", mdPath));
+      const jsonUrl = safeUrl(localUrl("metadata", jsonPath));
+      const pdfUrl = safeUrl(document.pdfUrl);
+      const path = mdPath || document.localPath || document.source || "Fuente remota sin copia local";
+      const links = [
+        mdUrl ? "<a href=\"" + mdUrl + "\" target=\"_blank\" rel=\"noreferrer\">Leer .md ↗</a>" : "",
+        jsonUrl ? "<a href=\"" + jsonUrl + "\" target=\"_blank\" rel=\"noreferrer\">JSON ↗</a>" : "",
+        pdfUrl ? "<a href=\"" + pdfUrl + "\" target=\"_blank\" rel=\"noreferrer\">PDF ↗</a>" : ""
+      ].filter(Boolean).join("");
+      return "<article class=\"source-item\"><span class=\"source-number\">" + String(index + 1).padStart(2, "0") + "</span><strong title=\"" + escapeHtml(path) + "\">" + escapeHtml(fileName(path)) + "</strong><code>" + escapeHtml(path) + "</code><div class=\"source-links\">" + (links || "<span>Sin copia local</span>") + "</div></article>";
+    }).join("") || "<p class=\"muted\">No hubo fuentes documentales.</p>";
     $("results").hidden = false;
     $("raw").textContent = JSON.stringify(data, null, 2);
     const markdownCreated = data.derivedMarkdownCreated || localInfo?.createdMarkdown || 0;

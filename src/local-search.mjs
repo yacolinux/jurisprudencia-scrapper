@@ -81,12 +81,22 @@ export function resolveLocalPdf(root, relativePath) {
   return file;
 }
 
-function resolveLocalMarkdown(root, relativePath) {
+export function resolveLocalMarkdown(root, relativePath) {
   const archiveRoot = resolve(root);
   const markdownPath = String(relativePath || "").replace(/\.pdf$/i, ".md");
   const file = resolve(archiveRoot, markdownPath);
   if (!file.startsWith(archiveRoot + sep) || extname(file).toLocaleLowerCase() !== ".md") {
     throw Object.assign(new Error("Archivo Markdown local no permitido"), { code: "LOCAL_FILE_NOT_ALLOWED" });
+  }
+  return file;
+}
+
+export function resolveLocalMetadata(root, relativePath) {
+  const archiveRoot = resolve(root);
+  const metadataPath = String(relativePath || "");
+  const file = resolve(archiveRoot, metadataPath);
+  if (!file.startsWith(archiveRoot + sep) || !metadataPath.toLocaleLowerCase().endsWith(".pdf.json")) {
+    throw Object.assign(new Error("Archivo JSON local no permitido"), { code: "LOCAL_FILE_NOT_ALLOWED" });
   }
   return file;
 }
@@ -204,7 +214,7 @@ export class LocalArchiveSearch {
     if (!document.path) return document;
     const metadataPath = document.path.replace(/\.pdf$/i, ".pdf.json");
     try {
-      const metadata = JSON.parse(await readFile(resolve(this.root, metadataPath), "utf8"));
+      const metadata = JSON.parse(await readFile(resolveLocalMetadata(this.root, metadataPath), "utf8"));
       return { ...document, ...metadata, path: document.path, metadataPath };
     } catch {
       return { ...document, metadataPath };

@@ -57,7 +57,13 @@
 
       <section id="results" class="results-section" hidden>
         <div class="section-heading"><div><p class="eyebrow">MATERIAL RECUPERADO</p><h2>Resultados que sustentan la respuesta</h2></div><span id="result-source" class="muted">Desde el archivo local</span></div>
-        <div id="resultList" class="result-list"></div>
+        <div class="results-layout">
+          <aside class="sources-sidebar" aria-label="Fuentes documentales usadas">
+            <div class="sources-heading"><p class="eyebrow">FUENTES LEÍDAS</p><h3>Archivos usados</h3><p>La respuesta se construyó con estos metadatos y Markdown locales.</p></div>
+            <div id="sourceList" class="source-list"></div>
+          </aside>
+          <div id="resultList" class="result-list"></div>
+        </div>
       </section>
 
       <details class="technical"><summary>Ver respuesta técnica del MCP</summary><pre id="raw"></pre></details>
