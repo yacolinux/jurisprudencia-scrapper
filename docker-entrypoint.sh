@@ -10,4 +10,4 @@ if [ "$#" -eq 0 ]; then
   set -- node /app/src/web-server.mjs
 fi
 
-exec su app -s /bin/sh -c 'exec "$@"' -- "$@"
+exec su app -s /bin/sh -c 'exec "$0" "$@"' -- "$@"
