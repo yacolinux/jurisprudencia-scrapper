@@ -1,3 +1,5 @@
+![Portal principal de la suite local de jurisprudencia](screenshots/portada2.jpg)
+
 # Suite local de jurisprudencia · Corrientes
 
 Suite de cuatro aplicaciones para consultar el portal remoto del Superior Tribunal de Justicia de Corrientes y conservar sus PDFs en un archivo local. El portal principal reúne los accesos; la app de consulta responde preguntas con el MCP; la app de descarga/actualización captura lotes; y el servidor MCP conserva la integración reutilizable.
@@ -19,6 +21,26 @@ Accesos locales:
 - http://localhost:3002/mcp.html — explicación del MCP
 
 Los tres servicios web usan network_mode: host para conservar el acceso al Chrome/CDP del host. Compose parametriza los puertos con ARCHIVE_PORT, QUERY_PORT y PORTAL_PORT, cuyos valores por defecto son 3000, 3001 y 3002.
+
+## Capturas
+
+### Consulta de jurisprudencia con IA
+
+La interfaz de Consulta filtra primero el archivo local, lee los Markdown derivados y presenta una respuesta asistida por el modelo LLM configurado en Compose.
+
+![Interfaz de Consulta IA](screenshots/portada3.jpg)
+
+### Descarga y actualización del archivo
+
+La aplicación de Descarga captura períodos mensuales o anuales, organiza los PDFs por año, mes, semana, fecha y materia, y conserva el estado para reintentos.
+
+![Interfaz de Descarga y actualización](screenshots/portada4.jpg)
+
+### Documentación del MCP
+
+La página del MCP explica las herramientas construidas, el flujo entre el cliente, el servidor y el portal remoto, y las limitaciones de acceso de la fuente oficial.
+
+![Documentación del MCP](screenshots/portada5.jpg)
 
 ## Criterio de búsqueda
 
