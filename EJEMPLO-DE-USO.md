@@ -228,7 +228,7 @@ Respuesta resumida:
   "bytes": 746789,
   "chars": 70547,
   "truncated": false,
-  "text": "Dr. JUAN MANUEL RODRIGUEZ ..."
+    "text": "Dra. PERSONA FICTICIA BETA ..."
 }
 ```
 
