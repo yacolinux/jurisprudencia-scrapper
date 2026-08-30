@@ -10,9 +10,13 @@ El MCP no utiliza un agente de IA para navegar el sitio. La navegación, la ejec
 
 ## Caso de uso
 
+Los valores de resultado de este documento son ficticios y sirven únicamente
+para ilustrar el contrato entre la aplicación, el MCP y el modelo. No
+representan un fallo real ni deben usarse como fuente jurídica.
+
 Un abogado consulta en el sistema interno:
 
-> “Buscá jurisprudencia del Superior Tribunal de Justicia de Corrientes sobre amparo contra el Instituto de Previsión Social, priorizando fallos recientes y explicá qué antecedentes podrían ser relevantes para este caso.”
+> “Buscá jurisprudencia del Superior Tribunal de Justicia de Corrientes sobre amparo contra el Organismo Previsional Demo, priorizando fallos recientes y explicá qué antecedentes podrían ser relevantes para este caso.”
 
 El sistema no debería pedirle al modelo que navegue directamente el sitio. El flujo prototipo es:
 
@@ -90,7 +94,7 @@ Ejemplo de intención interna:
 
 ```json
 {
-  "text": "Instituto de Previsión Social",
+  "text": "Organismo Previsional Demo",
   "materias": ["Amparo"],
   "anio": 2026,
   "page": 1,
@@ -108,7 +112,7 @@ La aplicación llama al MCP:
   "params": {
     "name": "search_jurisprudencia",
     "arguments": {
-      "text": "Instituto de Previsión Social",
+      "text": "Organismo Previsional Demo",
       "materias": ["Amparo"],
       "anio": 2026,
       "page": 1,
@@ -121,7 +125,7 @@ La aplicación llama al MCP:
 La búsqueda utiliza los filtros nativos del portal. En términos equivalentes, el MCP genera una URL de este tipo:
 
 ```text
-https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/fallosstj?filtros=1&texto=Instituto+de+Previsi%C3%B3n+Social&materias%5B%5D=2&anio=2026&per_page=10
+https://example.invalid/jurisprudencia/fallos/fallosstj?filtros=1&texto=Organismo+Previsional+Demo&materias%5B%5D=2&anio=2099&per_page=10
 ```
 
 El MCP no recorre automáticamente todas las páginas. El sistema de consulta debe pedir una página concreta y aplicar su propia política de límites.
@@ -132,19 +136,19 @@ La respuesta contiene metadatos suficientes para seleccionar documentos y contin
 
 ```json
 {
-  "source": "https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/fallosstj?filtros=1&texto=Instituto+de+Previsi%C3%B3n+Social&materias%5B%5D=2&anio=2026&per_page=10",
+  "source": "https://example.invalid/jurisprudencia/fallos/fallosstj?filtros=1&texto=Organismo+Previsional+Demo&materias%5B%5D=2&anio=2099&per_page=10",
   "total": 42,
   "page": 1,
   "totalPages": 5,
   "results": [
     {
-      "fallo": "Sentencia 735/2026",
-      "expediente": "EXP 235593/22",
-      "caratula": "SEGOVIA RAMON NICOLAS C/ INSTITUTO DE PREVISION SOCIAL DE LA PROVINCIA DE CORRIENTES Y OTRO S/ AMPARO (FUERO LABORAL)",
+      "fallo": "Sentencia 000/2099",
+      "expediente": "EXP DEMO-0001/2099",
+      "caratula": "PERSONA FICTICIA ALFA C/ ORGANISMO PREVISIONAL DEMO S/ AMPARO (EJEMPLO)",
       "materia": "Amparo",
-      "fecha": "26-08-2026",
-      "id": "48414",
-      "pdfUrl": "https://jurisprudencia.juscorrientes.gov.ar/ver-pdf/4fbd2f97-b28c-41b3-b445-a527be8f6c05"
+      "fecha": "01-01-2099",
+      "id": "99999",
+      "pdfUrl": "https://example.invalid/ver-pdf/00000000-0000-4000-8000-000000000001"
     }
   ]
 }
@@ -171,7 +175,7 @@ Para cada resultado seleccionado, la aplicación utiliza el `id` numérico devue
   "params": {
     "name": "get_jurisprudencia_detail",
     "arguments": {
-      "id": 48414
+      "id": 99999
     }
   }
 }
@@ -181,14 +185,14 @@ Respuesta prototipo:
 
 ```json
 {
-  "id": 48414,
-  "source": "https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/detalle_ajax/48414",
-  "heading": "Sentencia Amparo 735/2026",
-  "title": "SEGOVIA RAMON NICOLAS C/INSTITUTO DE PREVISION SOCIAL DE LA PROVINCIA DE CORRIENTES Y OTRO S/AMPARO (FUERO LABORAL)",
-  "metadata": "Expte/Legajo: EXP 235593/22 Fecha: 26/08/2026",
+  "id": 99999,
+  "source": "https://example.invalid/jurisprudencia/fallos/detalle_ajax/99999",
+  "heading": "Sentencia Amparo 000/2099",
+  "title": "PERSONA FICTICIA ALFA C/ORGANISMO PREVISIONAL DEMO S/AMPARO (EJEMPLO)",
+  "metadata": "Expte/Legajo: EXP DEMO-0001/2099 Fecha: 01/01/2099",
   "sections": [],
-  "pdfUrl": "https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/ver_pdf_proxy/4fbd2f97-b28c-41b3-b445-a527be8f6c05",
-  "text": "Sentencia Amparo 735/2026 ..."
+  "pdfUrl": "https://example.invalid/jurisprudencia/fallos/ver_pdf_proxy/00000000-0000-4000-8000-000000000001",
+  "text": "Sentencia Amparo 000/2099 ..."
 }
 ```
 
@@ -206,7 +210,7 @@ Cuando el PDF sea necesario para responder, la aplicación utiliza la URL devuel
   "params": {
     "name": "get_jurisprudencia_pdf_text",
     "arguments": {
-      "pdfUrl": "https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/ver_pdf_proxy/4fbd2f97-b28c-41b3-b445-a527be8f6c05",
+      "pdfUrl": "https://example.invalid/jurisprudencia/fallos/ver_pdf_proxy/00000000-0000-4000-8000-000000000001",
       "maxChars": 100000
     }
   }
@@ -219,7 +223,7 @@ Respuesta resumida:
 
 ```json
 {
-  "source": "https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/ver_pdf_proxy/4fbd2f97-b28c-41b3-b445-a527be8f6c05",
+  "source": "https://example.invalid/jurisprudencia/fallos/ver_pdf_proxy/00000000-0000-4000-8000-000000000001",
   "contentType": "application/pdf",
   "bytes": 746789,
   "chars": 70547,
@@ -236,15 +240,15 @@ El sistema externo puede convertir cada resultado en un documento canónico inde
 
 ```json
 {
-  "document_id": "juscorrientes:48414",
-  "source": "https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/ver_pdf_proxy/4fbd2f97-b28c-41b3-b445-a527be8f6c05",
+  "document_id": "jurisprudencia-demo:99999",
+  "source": "https://example.invalid/jurisprudencia/fallos/ver_pdf_proxy/00000000-0000-4000-8000-000000000001",
   "source_type": "jurisprudencia_oficial",
   "court": "Superior Tribunal de Justicia de Corrientes",
   "decision_type": "Sentencia",
-  "decision_number": "735/2026",
-  "date": "2026-08-26",
-  "case_number": "EXP 235593/22",
-  "title": "SEGOVIA RAMON NICOLAS C/ INSTITUTO DE PREVISION SOCIAL DE LA PROVINCIA DE CORRIENTES Y OTRO S/ AMPARO (FUERO LABORAL)",
+  "decision_number": "000/2099",
+  "date": "2099-01-01",
+  "case_number": "EXP DEMO-0001/2099",
+  "title": "PERSONA FICTICIA ALFA C/ ORGANISMO PREVISIONAL DEMO S/ AMPARO (EJEMPLO)",
   "subject": "Amparo",
   "retrieved_by": "mcp-jurisprudencia-corrientes",
   "retrieved_at": "2026-08-29T00:00:00Z",
@@ -266,15 +270,15 @@ Una estrategia sencilla de chunking para el prototipo es usar bloques de 4.000 a
 
 ```json
 {
-  "document_id": "juscorrientes:48414",
-  "chunk_id": "juscorrientes:48414:0003",
+  "document_id": "jurisprudencia-demo:99999",
+  "chunk_id": "jurisprudencia-demo:99999:0003",
   "text": "...",
   "metadata": {
     "court": "Superior Tribunal de Justicia de Corrientes",
-    "decision_number": "735/2026",
-    "date": "2026-08-26",
-    "case_number": "EXP 235593/22",
-    "source": "https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/ver_pdf_proxy/4fbd2f97-b28c-41b3-b445-a527be8f6c05"
+    "decision_number": "000/2099",
+    "date": "2099-01-01",
+    "case_number": "EXP DEMO-0001/2099",
+    "source": "https://example.invalid/jurisprudencia/fallos/ver_pdf_proxy/00000000-0000-4000-8000-000000000001"
   }
 }
 ```
@@ -311,9 +315,9 @@ Se encontraron antecedentes oficiales del Superior Tribunal de Justicia de Corri
 Usá únicamente las fuentes incluidas abajo. Si la evidencia no alcanza, indicálo.
 
 [Documento 1]
-Sentencia 735/2026 — EXP 235593/22
-SEGOVIA RAMON NICOLAS C/ INSTITUTO DE PREVISION SOCIAL...
-Fuente: https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/ver_pdf_proxy/4fbd2f97-b28c-41b3-b445-a527be8f6c05
+Sentencia 000/2099 — EXP DEMO-0001/2099
+PERSONA FICTICIA ALFA C/ ORGANISMO PREVISIONAL DEMO...
+Fuente: https://example.invalid/jurisprudencia/fallos/ver_pdf_proxy/00000000-0000-4000-8000-000000000001
 
 {chunks recuperados del documento}
 ```
@@ -395,9 +399,9 @@ En una implementación productiva, la carga al índice debería ejecutarse como 
 
 La respuesta del sistema de consulta podría tener esta forma:
 
-> Se identificaron antecedentes del STJ de Corrientes sobre amparos vinculados con el Instituto de Previsión Social. El resultado más reciente recuperado es la Sentencia 735/2026, expediente EXP 235593/22, de fecha 26/08/2026. La fuente oficial y el texto completo capturado deben revisarse antes de extraer una conclusión aplicable al caso concreto.
+> Se identificaron antecedentes del STJ de Corrientes sobre amparos vinculados con el Organismo Previsional Demo. El resultado más reciente recuperado es la Sentencia 000/2099, expediente EXP DEMO-0001/2099, de fecha 01/01/2099. La fuente y el texto completo capturado deben revisarse antes de extraer una conclusión aplicable al caso concreto.
 >
-> Fuente: [Sentencia 735/2026](https://jurisprudencia.juscorrientes.gov.ar/jurisprudencia/fallos/ver_pdf_proxy/4fbd2f97-b28c-41b3-b445-a527be8f6c05)
+> Fuente ficticia: [Sentencia 000/2099](https://example.invalid/jurisprudencia/fallos/ver_pdf_proxy/00000000-0000-4000-8000-000000000001)
 
 La IA formula la respuesta, pero la evidencia proviene del contenido capturado por el MCP y conserva la referencia oficial para auditoría humana.
 
