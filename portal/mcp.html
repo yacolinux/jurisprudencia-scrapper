@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MCP · Jurisprudencia</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="hero compact">
+    <a class="back" href="/">← Portal principal</a>
+    <p class="eyebrow">DOCUMENTACIÓN</p>
+    <h1>El MCP de jurisprudencia</h1>
+    <p>Una interfaz de herramientas que permite buscar, abrir el detalle y extraer texto de los fallos para que una aplicación o un modelo LLM los pueda analizar.</p>
+  </header>
+  <main class="doc">
+    <section class="panel"><h2>Herramientas disponibles</h2>
+      <dl>
+        <dt>search_jurisprudencia</dt><dd>Busca en el portal remoto con texto, materia, año, tipo y paginación.</dd>
+        <dt>get_jurisprudencia_detail</dt><dd>Recupera el detalle completo de un resultado por su identificador.</dd>
+        <dt>get_jurisprudencia_pdf_text</dt><dd>Descarga un PDF y extrae su texto con un límite configurable.</dd>
+        <dt>diagnose_jurisprudencia_access</dt><dd>Comprueba conectividad, challenge de Cloudflare, navegador y API.</dd>
+      </dl>
+    </section>
+    <section class="panel"><h2>Flujo</h2>
+      <pre>Cliente MCP (stdio / JSON-RPC)
+          ↓
+      src/server.mjs
+          ↓
+      Cliente HTTP o navegador Chromium
+          ↓
+      Portal remoto de jurisprudencia</pre>
+      <p>La app de consulta usa este MCP para obtener resultados, detalles y texto PDF; luego el modelo configurado en <code>OPENCODE_MODEL</code> prepara la respuesta.</p>
+    </section>
+    <section class="panel"><h2>Cloudflare y acceso</h2>
+      <p>El acceso HTTP directo puede recibir un challenge. Por eso el cliente admite Chromium/Xvfb y también reutilizar un Chrome externo mediante <code>JURIS_CDP_URL=http://127.0.0.1:9222</code>. Si el challenge no puede resolverse automáticamente, la ejecución queda informada para reintento manual.</p>
+    </section>
+    <section class="panel"><h2>Archivo local</h2>
+      <p>La app de descarga conserva cada PDF en el bind mount local <code>./data</code>, con carpetas por año, mes y fecha. La captura anual recorre la paginación anual y filtra las fechas localmente porque el sitio no ofrece un índice mensual confiable.</p>
+      <p>Fuentes del proyecto: <code>README.md</code>, <code>CLOUDFLARE-WORKAROUND.md</code> y <code>src/server.mjs</code>.</p>
+    </section>
+  </main>
+</body>
+</html>

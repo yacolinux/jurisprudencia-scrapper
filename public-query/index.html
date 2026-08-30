@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Consulta de jurisprudencia</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #26384b; background: #f5f8fb; }
+    body { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    nav { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; }
+    nav a { color: #168eae; font-weight: 700; text-decoration: none; }
+    .card { background: white; border: 1px solid #d8e1e8; border-radius: 12px; padding: 22px; margin-bottom: 18px; box-shadow: 0 3px 12px #18364c12; }
+    h1 { margin-top: 0; color: #1b527c; } label { display: block; font-weight: 700; margin: 14px 0 6px; }
+    textarea, input, select { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid #bdccd7; border-radius: 8px; font: inherit; }
+    textarea { min-height: 110px; resize: vertical; } .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    button { margin-top: 18px; background: #4e7295; color: white; border: 0; border-radius: 8px; padding: 12px 22px; font-size: 1rem; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; } .muted { color: #6e8091; } .error { color: #a94132; background: #fff0ed; padding: 12px; border-radius: 8px; }
+    .result { border-top: 1px solid #e1e8ee; padding: 14px 0; } .result h3 { margin: 0 0 8px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f7f9; padding: 14px; border-radius: 8px; }
+    @media (max-width: 680px) { body { padding: 14px; } .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <nav><a href="http://localhost:3002">Portal principal</a><a href="http://localhost:3000">Descarga / actualización</a></nav>
+  <main class="card">
+    <h1>Consulta de jurisprudencia</h1>
+    <p class="muted">Búsqueda asistida sobre el portal remoto, con detalle y texto de los PDFs cuando están disponibles.</p>
+    <form id="form">
+      <label for="question">Consulta</label>
+      <textarea id="question" required minlength="5" placeholder="Ej.: fallos sobre amparo y cobertura de salud"></textarea>
+      <div class="row">
+        <div><label for="searchText">Texto exacto para el sitio (opcional)</label><input id="searchText" placeholder="Términos de búsqueda"></div>
+        <div><label for="materia">Materia (opcional)</label><input id="materia" placeholder="Ej.: Amparo"></div>
+      </div>
+      <label>Modo</label>
+      <div><label><input type="radio" name="mode" value="single" checked> Respuesta breve</label>
+      <label><input type="radio" name="mode" value="report"> Informe</label></div>
+      <button id="submit">Buscar</button>
+    </form>
+  </main>
+  <section id="status" class="muted"></section>
+  <section id="error" class="error" hidden></section>
+  <section id="answer" class="card" hidden><h2>Respuesta</h2><div id="answerText"></div><p class="muted" id="meta"></p></section>
+  <section id="results" class="card" hidden><h2>Resultados recuperados</h2><div id="resultList"></div></section>
+  <details class="card"><summary>Respuesta técnica</summary><pre id="raw"></pre></details>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

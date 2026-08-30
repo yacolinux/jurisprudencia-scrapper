@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jurisprudencia · Portal</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="hero">
+    <p class="eyebrow">JURISPRUDENCIA · SUITE LOCAL</p>
+    <h1>Un punto de entrada para consultar y conservar fallos.</h1>
+    <p>Las aplicaciones trabajan separadas: una consulta el sitio remoto, otra construye un archivo local de PDFs y este portal reúne los accesos y la documentación del MCP.</p>
+  </header>
+  <main>
+    <section class="cards">
+      <a class="card blue" href="http://localhost:3001">
+        <span class="number">01</span><h2>Consulta</h2>
+        <p>Realizá preguntas sobre jurisprudencia y obtené respuestas asistidas con los resultados remotos.</p>
+        <span class="action">Abrir aplicación →</span>
+      </a>
+      <a class="card teal" href="http://localhost:3000">
+        <span class="number">02</span><h2>Descarga / actualización</h2>
+        <p>Capturá meses o un año completo, organizá los PDFs por período y reintentá pendientes.</p>
+        <span class="action">Abrir aplicación →</span>
+      </a>
+      <a class="card dark" href="/mcp.html">
+        <span class="number">03</span><h2>Cómo funciona el MCP</h2>
+        <p>Conocé las herramientas construidas, el flujo de datos y las limitaciones de acceso del sitio.</p>
+        <span class="action">Leer documentación →</span>
+      </a>
+    </section>
+    <section class="architecture">
+      <p class="eyebrow">ARQUITECTURA</p>
+      <h2>Cuatro aplicaciones, responsabilidades claras</h2>
+      <div class="flow"><span>Portal<br><small>3002</small></span><b>→</b><span>Consulta<br><small>3001</small></span><b>+</b><span>Archivo<br><small>3000</small></span></div>
+      <p>El portal es una puerta de entrada; no ejecuta búsquedas ni mueve PDFs. La configuración de Docker Compose deja cada servicio en su puerto para poder tenerlos disponibles al mismo tiempo.</p>
+    </section>
+  </main>
+  <footer><a href="/mcp.html">Documentación MCP</a> · <a href="https://github.com/yacolinux/jurisprudencia-scrapper">Repositorio</a></footer>
+</body>
+</html>

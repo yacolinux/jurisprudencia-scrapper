@@ -7,7 +7,10 @@ services:
     # portal. La red host conserva el acceso a localhost:3000 y al portal.
     network_mode: host
     environment:
-      PORT: 3000
+      PORT: ${ARCHIVE_PORT:-3000}
+      APP_MODE: archive
+      PUBLIC_DIR: /app/public
+      DATA_DIR: /data
       JURIS_ACCESS_MODE: ${JURIS_ACCESS_MODE:-auto}
       JURIS_HEADLESS: ${JURIS_HEADLESS:-0}
       JURIS_USE_XVFB: ${JURIS_USE_XVFB:-1}
@@ -17,6 +20,13 @@ services:
       JURIS_CHALLENGE_TIMEOUT_MS: ${JURIS_CHALLENGE_TIMEOUT_MS:-60000}
       MAX_DOCUMENTS: ${MAX_DOCUMENTS:-3}
       MAX_PDF_CHARS: ${MAX_PDF_CHARS:-18000}
+      BATCH_PAGE_SIZE: ${BATCH_PAGE_SIZE:-100}
+      BATCH_MAX_PAGES: ${BATCH_MAX_PAGES:-500}
+      BATCH_DELAY_MS: ${BATCH_DELAY_MS:-350}
+      # Manual por defecto: Cloudflare no se reintenta agresivamente.
+      BATCH_RETRY_MODE: ${BATCH_RETRY_MODE:-manual}
+      BATCH_RETRY_ATTEMPTS: ${BATCH_RETRY_ATTEMPTS:-2}
+      BATCH_RETRY_DELAY_MS: ${BATCH_RETRY_DELAY_MS:-120000}
       # Modelo gratuito de OpenCode validado dentro del contenedor. Se puede
       # desactivar con OPENCODE_ENABLED=0 en un archivo .env local.
       OPENCODE_ENABLED: ${OPENCODE_ENABLED:-1}
@@ -24,7 +34,46 @@ services:
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
     init: true
     restart: "no"
+    # Bind mount: los PDFs quedan en el directorio local del proyecto.
+    volumes:
+      - ${DATA_DIR:-./data}:/data
     # El seccomp predeterminado del host bloquea los namespaces requeridos por
     # Chromium. Chromium sigue ejecutándose con chromium-sandbox habilitado.
     security_opt:
       - seccomp=unconfined
+
+  jurisprudencia-query:
+    build:
+      context: .
+      network: host
+    network_mode: host
+    environment:
+      PORT: ${QUERY_PORT:-3001}
+      APP_MODE: query
+      PUBLIC_DIR: /app/public-query
+      JURIS_ACCESS_MODE: ${JURIS_ACCESS_MODE:-auto}
+      JURIS_HEADLESS: ${JURIS_HEADLESS:-0}
+      JURIS_USE_XVFB: ${JURIS_USE_XVFB:-1}
+      JURIS_CDP_URL: ${JURIS_CDP_URL:-}
+      JURIS_CHALLENGE_TIMEOUT_MS: ${JURIS_CHALLENGE_TIMEOUT_MS:-60000}
+      MAX_DOCUMENTS: ${MAX_DOCUMENTS:-3}
+      MAX_PDF_CHARS: ${MAX_PDF_CHARS:-18000}
+      OPENCODE_ENABLED: ${OPENCODE_ENABLED:-1}
+      OPENCODE_MODEL: ${OPENCODE_MODEL:-opencode/nemotron-3.5-lightning-free}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+    init: true
+    restart: "no"
+    security_opt:
+      - seccomp=unconfined
+
+  jurisprudencia-portal:
+    build:
+      context: .
+      network: host
+    network_mode: host
+    environment:
+      PORT: ${PORTAL_PORT:-3002}
+      PORTAL_DIR: /app/portal
+    command: ["node", "/app/src/portal-server.mjs"]
+    init: true
+    restart: "no"

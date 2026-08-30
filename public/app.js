@@ -1,72 +1,41 @@
 const $ = (selector) => document.querySelector(selector);
-const form = $("#query-form");
-const loading = $("#loading");
-const errorBox = $("#error");
-const result = $("#result");
+const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const MATTERS = ["Amparo", "Civil y Comercial", "Conflicto de Poderes", "Electoral", "Habeas Data", "Laboral", "Menores", "Penal", "Proc. Administrativo", "Superintendencia"];
 
-function setBusy(value) {
-  $("#submit").disabled = value;
-  loading.classList.toggle("hidden", !value);
-  if (value) { errorBox.classList.add("hidden"); result.classList.add("hidden"); }
+function escapeHtml(value) { return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+function formatDate(value) { return value ? new Date(value).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "—"; }
+function periodLabel(input) { return input.month === null || input.month === "all" || input.month === "todo" ? `${input.year} · año completo` : `${input.year} · ${MONTHS[Number(input.month) - 1]}`; }
+function setError(error) { $("#error-title").textContent = error.code === "CHALLENGE_REQUIRED" ? "El portal pidió una verificación" : "No se pudo completar la operación"; $("#error-message").textContent = `${error.error || error.message || "Error inesperado"}${error.code ? ` (${error.code})` : ""}`; $("#error").classList.remove("hidden"); }
+
+function initForm() {
+  const now = new Date();
+  $("#year").value = now.getFullYear();
+  $("#month").innerHTML = MONTHS.map((month, index) => `<option value="${index + 1}" ${index === now.getMonth() ? "selected" : ""}>${month[0].toUpperCase() + month.slice(1)}</option>`).join("") + '<option value="all">Todo el año</option>';
+  $("#matters").innerHTML = MATTERS.map((matter) => `<label><input type="checkbox" name="materias" value="${escapeHtml(matter)}" /> ${escapeHtml(matter)}</label>`).join("");
+  $("#all-matters").addEventListener("change", (event) => { $("#matters").querySelectorAll("input").forEach((input) => { input.checked = false; input.disabled = event.target.checked; }); });
+  $("#matters").addEventListener("change", () => { if ([...$("#matters").querySelectorAll("input")].some((input) => input.checked)) $("#all-matters").checked = false; });
 }
 
-function markdown(value) {
-  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>").replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^- (.+)$/gm, "<li>$1</li>").replace(/\n\n/g, "<br /><br />").replace(/\n/g, "<br />");
+function renderSummary(summary) { $("#summary-total").textContent = summary.total ?? 0; $("#summary-years").textContent = Object.keys(summary.byYear || {}).length || "—"; $("#summary-matters").textContent = Object.keys(summary.byMatter || {}).length || "—"; $("#summary-root").textContent = summary.root?.endsWith("/data") ? "./data" : (summary.root || "./data"); $("#archive-updated").textContent = summary.updatedAt ? `Actualizado ${formatDate(summary.updatedAt)}` : "Sin archivos todavía"; }
+function statusLabel(status) { return ({ queued: "EN COLA", running: "EJECUTANDO", completed: "COMPLETADO", failed: "FALLÓ", cancelled: "CANCELADO", interrupted: "INTERRUMPIDO", needs_attention: "REQUIERE ATENCIÓN" })[status] || status.toUpperCase(); }
+function renderJob(job) {
+  const stats = job.result || job.progress || {};
+  $("#status").classList.remove("hidden");
+  $("#status-title").textContent = job.status === "completed" ? `Captura ${periodLabel(job.input)}` : (stats.materia ? `Buscando ${stats.materia}` : "Preparando captura…");
+  $("#status-badge").textContent = statusLabel(job.status); $("#status-badge").className = `status-badge ${job.status}`;
+  const progress = stats.materiaTotal ? ((stats.materiaIndex - 1) / stats.materiaTotal + ((stats.page || 0) / Math.max(stats.pageTotal || 1, 1)) / stats.materiaTotal) * 100 : job.status === "completed" ? 100 : 6;
+  $("#progress-bar").style.width = `${Math.min(100, Math.max(4, progress))}%`;
+  [["pages", "pages"], ["candidates", "candidates"], ["filtered", "filtered"], ["downloaded", "downloaded"], ["cached", "cached"], ["withoutPdf", "without-pdf"], ["errors", "errors"]].forEach(([key, id]) => { $(`#stat-${id}`).textContent = stats[key] ?? 0; });
+  $("#status-message").textContent = job.error ? `${job.error.message} (${job.error.code}). Podés resolver el acceso y reintentar los pendientes.` : job.status === "completed" ? `Finalizado ${formatDate(job.finishedAt)}. ${stats.filtered ?? 0} registros pertenecían al período; ${stats.downloaded ?? 0} PDFs nuevos y ${stats.cached ?? 0} ya estaban en caché.` : `${stats.phase === "download" ? "Descargando PDF" : stats.phase === "retry" ? `Reintentando (${stats.attempt}/${stats.retryMax})` : stats.phase === "search" ? "Recorriendo páginas del buscador oficial" : "Procesando"}…`;
+  $("#events").innerHTML = (job.events || []).slice(-8).reverse().map((event) => `<div><span>${escapeHtml(event.phase)}</span><p>${escapeHtml(event.item?.caratula || event.item?.fallo || event.error || "Procesando resultados")}</p></div>`).join("");
 }
+function renderJobs(jobs) { $("#jobs").innerHTML = jobs.length ? jobs.map((job) => { const failures = job.result?.failures?.length || job.progress?.failures?.length || 0; const canRetry = failures || ["needs_attention", "failed", "interrupted"].includes(job.status); return `<div class="job-row"><div><strong>${escapeHtml(periodLabel(job.input))}</strong><p>${escapeHtml(job.input.materias?.length ? job.input.materias.join(", ") : "Todas las materias")} · ${formatDate(job.createdAt)}</p></div><div class="job-result"><span class="status-badge ${job.status}">${statusLabel(job.status)}</span><small>${job.result ? `${job.result.filtered} del período · ${job.result.downloaded} nuevos · ${job.result.cached} en caché · ${job.result.errors} errores` : ""}</small>${canRetry ? `<button class="retry-link" data-retry-job="${escapeHtml(job.id)}">${failures ? `Reintentar ${failures} pendiente${failures === 1 ? "" : "s"}` : "Continuar ejecución"}</button>` : ""}</div></div>`; }).join("") : '<p class="empty">Todavía no se ejecutó ninguna captura.</p>'; }
+async function refresh() { const [summaryResponse, jobsResponse] = await Promise.all([fetch("/api/archive/summary"), fetch("/api/jobs")]); renderSummary(await summaryResponse.json()); renderJobs((await jobsResponse.json()).jobs || []); }
+async function pollJob(id) { try { const response = await fetch(`/api/jobs/${encodeURIComponent(id)}`); if (!response.ok) throw await response.json(); const { job } = await response.json(); renderJob(job); if (["queued", "running"].includes(job.status)) setTimeout(() => pollJob(id), 1200); else { $("#submit").disabled = false; await refresh(); } } catch (error) { setError(error); $("#submit").disabled = false; } }
 
-function escapeHtml(value) {
-  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
-function safeUrl(value) {
-  try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; }
-}
-
-function showError(payload) {
-  $("#error-title").textContent = payload.code === "CHALLENGE_REQUIRED" ? "El portal pidió una verificación adicional" : "No se pudo completar la consulta";
-  $("#error-message").textContent = payload.code === "CHALLENGE_REQUIRED" ? "El MCP no pudo completar el desafío de Cloudflare en el tiempo configurado. Probá nuevamente o revisá el modo de acceso del contenedor." : `${payload.error || "Error inesperado"} (${payload.code || "WEB_ERROR"})`;
-  if (payload.browserState) { $("#error-state").textContent = JSON.stringify(payload.browserState, null, 2); $("#error-state").classList.remove("hidden"); }
-  errorBox.classList.remove("hidden");
-}
-
-function render(data) {
-  $("#result-title").textContent = data.mode === "report" ? "Reporte preliminar" : "Respuesta puntual";
-  $("#provider-badge").textContent = (data.provider || "local").toUpperCase();
-  $("#generated-at").textContent = new Date(data.generatedAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
-  $("#answer").innerHTML = markdown(data.answer);
-  $("#source-count").textContent = `${data.documents.length} fuente${data.documents.length === 1 ? "" : "s"}`;
-  $("#access-mode").textContent = `${data.accessMode} · MCP JSON-RPC`;
-  $("#ai-mode").textContent = data.provider === "opencode" ? `OpenCode · ${data.model}` : "fallback local reproducible";
-  $("#sources").innerHTML = data.documents.length ? data.documents.map((source) => { const url = safeUrl(source.source); return `<div class="source"><strong>${escapeHtml(source.title || "Fallo sin título")}</strong><p>${escapeHtml([source.expediente, source.materia, source.fecha].filter(Boolean).join(" · ") || "Metadatos parciales")}</p>${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Abrir fuente oficial ↗</a>` : "<p>Sin enlace recuperado</p>"}</div>`; }).join("") : '<p class="form-hint">No se recuperaron documentos con contenido.</p>';
-  $("#raw").textContent = JSON.stringify({ search: data.search, documents: data.documents.map(({ detail, content, ...document }) => ({ ...document, contentChars: content?.length || 0 })) }, null, 2);
-  result.classList.remove("hidden");
-  result.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  setBusy(true);
-  const data = Object.fromEntries(new FormData(form));
-  const filters = data.materia ? { materias: [data.materia] } : {};
-  try {
-    const response = await fetch("/api/query", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: data.question, searchText: data.searchText, mode: data.mode, filters }) });
-    const payload = await response.json();
-    if (!response.ok) throw payload;
-    render(payload);
-  } catch (payload) { showError(payload); }
-  finally { setBusy(false); }
-});
-
-$("#diagnose").addEventListener("click", async () => {
-  const button = $("#diagnose"); button.disabled = true; button.textContent = "Verificando…";
-  try { const response = await fetch("/api/diagnose"); const payload = await response.json(); if (!response.ok) throw payload; alert(payload.challenge ? "MCP accesible, pero el portal está mostrando un desafío de Cloudflare." : "MCP accesible: el acceso HTTP directo no fue bloqueado."); }
-  catch (payload) { showError(payload); }
-  finally { button.disabled = false; button.textContent = "Verificar MCP"; }
-});
-
-$("#new-query").addEventListener("click", () => { result.classList.add("hidden"); window.scrollTo({ top: 0, behavior: "smooth" }); $("#question").focus(); });
-
-fetch("/api/health").then((response) => response.json()).then((health) => { $("#access-mode").textContent = `${health.accessMode} · MCP JSON-RPC`; $("#ai-mode").textContent = health.ai === "opencode" ? "OpenCode habilitado" : "fallback local reproducible"; }).catch(() => {});
+async function retryJob(id) { $("#submit").disabled = true; try { const response = await fetch(`/api/jobs/${encodeURIComponent(id)}/retry`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ retry: { mode: $("#retry-mode").value, attempts: Number($("#retry-attempts").value), delayMs: Number($("#retry-delay").value) * 1000 } }) }); const payload = await response.json(); if (!response.ok) throw payload; renderJob(payload.job); pollJob(payload.job.id); } catch (error) { setError(error); $("#submit").disabled = false; } }
+$("#batch-form").addEventListener("submit", async (event) => { event.preventDefault(); $("#error").classList.add("hidden"); $("#submit").disabled = true; const materias = $("#all-matters").checked ? [] : [...$("#matters").querySelectorAll("input:checked")].map((input) => input.value); const monthValue = $("#month").value; try { const response = await fetch("/api/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ year: Number($("#year").value), month: monthValue === "all" ? "all" : Number(monthValue), materias, retry: { mode: $("#retry-mode").value, attempts: Number($("#retry-attempts").value), delayMs: Number($("#retry-delay").value) * 1000 } }) }); const payload = await response.json(); if (!response.ok) throw payload; renderJob(payload.job); pollJob(payload.job.id); } catch (error) { setError(error); $("#submit").disabled = false; } });
+$("#refresh").addEventListener("click", () => refresh().catch(setError));
+$("#jobs").addEventListener("click", (event) => { const button = event.target.closest("[data-retry-job]"); if (button) retryJob(button.dataset.retryJob); });
+$("#diagnose").addEventListener("click", async () => { const button = $("#diagnose"); button.disabled = true; button.textContent = "Verificando…"; try { const response = await fetch("/api/diagnose"); const payload = await response.json(); if (!response.ok) throw payload; alert(payload.challenge ? "El portal está mostrando un desafío de Cloudflare. Configurá JURIS_CDP_URL o usá el navegador del contenedor." : "El acceso al portal está disponible."); } catch (error) { setError(error); } finally { button.disabled = false; button.textContent = "Diagnosticar acceso"; } });
+initForm(); refresh().catch(setError);

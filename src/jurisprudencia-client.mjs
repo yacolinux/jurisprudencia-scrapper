@@ -593,6 +593,24 @@ export class JurisprudenciaClient {
     return extractPdfText(pdf, url.href, maxChars);
   }
 
+  async downloadPdf(pdfUrl) {
+    const url = new URL(String(pdfUrl));
+    if (url.origin !== BASE_URL || !/^\/(?:ver-pdf|jurisprudencia\/fallos\/ver_pdf_proxy)\//.test(url.pathname)) {
+      throw new Error("pdfUrl debe ser una URL PDF del portal devuelta por la búsqueda o el detalle");
+    }
+    const accessMode = process.env.JURIS_ACCESS_MODE || "auto";
+    if (accessMode !== "browser") {
+      try {
+        const { body } = await directFetch(url.href, { binary: true });
+        return body;
+      } catch (error) {
+        if (accessMode === "direct") throw error;
+      }
+    }
+    await this.session.ensureStarted();
+    return this.session.capturePdf(url.href);
+  }
+
   async diagnose() {
     const cdpUrl = process.env.JURIS_CDP_URL?.replace(/\/+$/, "");
     let cdpReachable = false;

@@ -1,167 +1,114 @@
-# Jurisprudencia MCP · Corrientes
+# Suite local de jurisprudencia · Corrientes
 
-![Portada de Jurisprudencia MCP](./portada.png)
+Suite de cuatro aplicaciones para consultar el portal remoto del Superior Tribunal de Justicia de Corrientes y conservar sus PDFs en un archivo local. El portal principal reúne los accesos; la app de consulta responde preguntas con el MCP; la app de descarga/actualización captura lotes; y el servidor MCP conserva la integración reutilizable.
 
-MVP web para realizar consultas jurídicas one-shot sobre la jurisprudencia pública del Superior Tribunal de Justicia de Corrientes. La aplicación recibe una pregunta, busca fallos en el portal oficial mediante un MCP local, recupera el detalle y el texto de los PDFs, y genera una respuesta puntual o un reporte preliminar con OpenCode.
+## Aplicaciones y puertos
 
-No es un chatbot persistente, no requiere autenticación y no pretende reemplazar el análisis profesional: cada salida debe contrastarse con el fallo original y la normativa vigente.
+| Aplicación | Puerto | Función |
+|---|---:|---|
+| Archivo / descarga | 3000 | Captura mensual o anual, caché, reintentos y navegación de PDFs |
+| Consulta | 3001 | Preguntas sobre resultados remotos, detalles y texto PDF |
+| Portal principal | 3002 | Acceso a las dos apps y documentación del MCP |
+| MCP por stdio | — | Herramientas para clientes MCP/OpenCode |
 
-## Qué hace
+Accesos locales:
 
-- Consulta el buscador público de jurisprudencia del STJ de Corrientes.
-- Traduce filtros habituales: texto, materia, año, tipo de fallo, legajo y categorías.
-- Recupera hasta tres fallos, sus detalles HTML y sus PDFs.
-- Extrae texto localmente con `pdftotext`.
-- Sintetiza el contexto en español con un modelo gratuito de OpenCode.
-- Ofrece dos salidas: respuesta puntual o reporte preliminar.
-- Expone el MCP por JSON-RPC sobre stdio y una interfaz web sin auth.
+- http://localhost:3002 — portal principal
+- http://localhost:3001 — consulta
+- http://localhost:3000 — descarga / actualización
+- http://localhost:3002/mcp.html — explicación del MCP
 
-## Flujo
+Los tres servicios web usan network_mode: host para conservar el acceso al Chrome/CDP del host. Compose parametriza los puertos con ARCHIVE_PORT, QUERY_PORT y PORTAL_PORT, cuyos valores por defecto son 3000, 3001 y 3002.
+
+## Criterio de búsqueda
+
+El portal no ofrece un índice mensual ni fecha como filtro utilizable: las búsquedas textuales `MM-AAAA` y `DD-MM-AAAA` no devuelven los fallos que sí aparecen con `año + materia`. Por eso la app usa la capacidad compatible del sitio: paginación anual por materia, procesamiento secuencial página por página y filtro local por fecha. `Todo el año` mantiene ese recorrido único, evitando repetir doce veces la misma búsqueda anual. Cada ID o URL ya archivado se salta sin volver a descargarlo.
+
+El acceso al portal reutiliza la lógica de la app anterior: HTTP directo cuando funciona y fallback a Chromium/Xvfb o a un Chrome externo por CDP cuando aparece Cloudflare.
+
+## Persistencia local
+
+Docker Compose usa un bind mount, no un volumen administrado por Docker:
 
 ```text
-Pregunta web
-    ↓
-POST /api/query
-    ↓
-web-server → MCP JSON-RPC → portal oficial
-                       ├─ búsqueda
-                       ├─ detalle HTML
-                       └─ PDF + extracción local
-    ↓
-OpenCode → respuesta verificable con fuentes
+./data  →  /data
 ```
 
-La IA no navega el portal ni inventa fuentes: recibe únicamente el contexto recuperado por el MCP. Si OpenCode no está disponible, el backend conserva un fallback local reproducible.
+Ejemplo de estructura:
 
-## Arranque con Docker Compose
+```text
+data/
+├── manifest.json
+└── 2026/
+    └── 08-agosto/
+        └── semana-35/
+            └── 25-08-2026/
+                └── amparo/
+                    ├── 000123-25-08-2026-caratula.pdf
+                    └── 000123-25-08-2026-caratula.pdf.json
+```
 
-Requisitos: Docker, Docker Compose y una sesión gráfica del host para el acceso CDP recomendado.
+El PDF es el archivo principal. El JSON lateral conserva metadatos mínimos y `manifest.json` permite detectar la caché y alimentar una futura etapa de búsqueda local. El estado de trabajos queda en `data/.state/jobs/`.
+
+## Arranque
+
+Requisitos: Docker y Docker Compose.
 
 ```bash
 cp .env.example .env
-DISPLAY=:0 ./scripts/start-host-chrome.sh
+mkdir -p data
 docker compose up -d --build
 ```
 
-Abrir [http://localhost:3000](http://localhost:3000).
-
-El arranque es manual y el servicio tiene `restart: "no"`: no se configura reinicio automático con Docker ni con el sistema. Para detenerlo:
-
-```bash
-docker compose down
-systemctl --user stop mvp-jurisprudencia-chrome.service
-```
-
-## Acceso al portal y Cloudflare
-
-El portal puede presentar un desafío de Cloudflare a clientes HTTP o a Chromium aislado. Por eso el Compose admite una sesión Chrome externa, iniciada manualmente y aislada del perfil personal:
-
-```bash
-DISPLAY=:0 ./scripts/start-host-chrome.sh
-```
-
-El script usa el puerto local `9222` y un perfil temporal en `/tmp/mvp-jurisprudencia-chrome-profile`. El MCP reutiliza una pestaña `page` por CDP y no cierra ese Chrome al detenerse.
-
-La configuración recomendada en `.env` es:
+Para el acceso más confiable al portal, ejecutar antes el Chrome externo descrito en `scripts/start-host-chrome.sh` y usar en `.env`:
 
 ```dotenv
 JURIS_ACCESS_MODE=browser
 JURIS_CDP_URL=http://127.0.0.1:9222
-JURIS_CHALLENGE_TIMEOUT_MS=60000
 ```
 
-Alternativas:
+Abrir http://localhost:3002. El directorio data pertenece al proyecto que ejecuta Compose y se puede recorrer manualmente desde el host. El cambio de puertos se aplica al crear o recrear los servicios; modificar docker-compose.yml no reinicia por sí solo un contenedor ya activo.
 
-- `JURIS_ACCESS_MODE=auto`: intenta HTTP directo y luego Chromium + Xvfb.
-- `JURIS_ACCESS_MODE=direct`: solo HTTP directo; útil si la red no presenta el desafío.
-- `JURIS_ACCESS_MODE=browser`: usa CDP externo cuando `JURIS_CDP_URL` existe; si no, Chromium + Xvfb dentro del contenedor.
+## API de archivo / descarga
 
-El diagnóstico está disponible en `GET /api/diagnose` y distingue el desafío HTTP de la disponibilidad de CDP.
+- `POST /api/jobs` inicia una captura: `{ "year": 2026, "month": 8, "materias": ["Amparo"] }`. `month: "all"` captura el año completo; un array vacío significa todas las materias.
+- `GET /api/jobs` lista las últimas ejecuciones.
+- `GET /api/jobs/:id` devuelve el progreso y el resultado de una ejecución.
+- `POST /api/jobs/:id/retry` reintenta solo los pendientes de una ejecución anterior. Acepta `{ "retry": { "mode": "manual|automatic|delayed", "attempts": 2, "delayMs": 120000 } }`.
+- `GET /api/archive/summary` devuelve totales de la caché.
+- `GET /api/archive/documents?year=2026&month=8` lista PDFs archivados.
+- `GET /api/archive/file?path=...` sirve un PDF ya guardado.
+- `GET /api/health` y `GET /api/diagnose` informan el estado de la app y del acceso remoto.
 
-## OpenCode
+La app de consulta mantiene el endpoint compatible POST /api/query en el puerto 3001, con un cuerpo como { "question": "fallos sobre amparo", "searchText": "", "mode": "single", "filters": {} }.
 
-El contenedor instala el CLI `opencode-ai`. La configuración de ejemplo usa el modelo gratuito probado en el MVP:
+## Captura de un año completo
 
-```dotenv
-OPENCODE_ENABLED=1
-OPENCODE_MODEL=opencode/nemotron-3.5-lightning-free
-```
+La opción Todo el año no intenta enviar un filtro anual al sitio. El portal remoto no ofrece un índice mensual ni una fecha utilizable como filtro: las búsquedas textuales MM-AAAA y DD-MM-AAAA no devuelven los fallos que sí aparecen con año + materia. La app realiza una paginación anual única, procesa sus páginas en secuencia y filtra localmente por fecha/mes. Esto documenta una limitación del sitio, no un fallo de la aplicación.
 
-También se puede configurar otro proveedor/modelo en `.env`. No se incluyen claves en el repositorio; `.env` está excluido por `.gitignore`.
-
-## API web
-
-### Health
-
-```bash
-curl http://localhost:3000/api/health
-```
-
-### Consulta one-shot
-
-```bash
-curl -X POST http://localhost:3000/api/query \
-  -H 'content-type: application/json' \
-  -d '{
-    "question": "¿Qué criterios recientes aparecen sobre amparo contra IOSCOR?",
-    "mode": "single",
-    "filters": {"materias": ["Amparo"]}
-  }'
-```
-
-El JSON de respuesta incluye `provider`, `model`, resultados, documentos considerados, texto extraído, enlaces oficiales y la síntesis IA.
-
-## Herramientas MCP
-
-- `search_jurisprudencia`: búsqueda con filtros nativos del portal.
-- `get_jurisprudencia_detail`: detalle HTML estructurado por ID numérico.
-- `get_jurisprudencia_pdf_text`: descarga y extracción local del PDF oficial.
-- `diagnose_jurisprudencia_access`: diagnóstico de HTTP, Cloudflare y CDP.
-
-Para usar el MCP desde otro cliente:
-
-```json
-{
-  "mcpServers": {
-    "jurisprudencia-corrientes": {
-      "command": "node",
-      "args": ["/ruta/absoluta/api-remota/src/server.mjs"]
-    }
-  }
-}
-```
-
-En un entorno sin `DISPLAY`, puede usarse `xvfb-run` delante de `node` si no se dispone de un Chrome CDP externo.
-
-## Ejemplos de búsqueda
-
-El directorio [`screenshots/`](./screenshots/) contiene PDFs exportados desde la interfaz como ejemplos reproducibles del flujo completo. Para su publicación se incluyen copias con datos identificatorios cubiertos:
-
-- [Ejemplo 1 · reporte sobre criterios de estafa](<./screenshots/censurados/ej 1 - Jurisprudencia · MVP MCP - 2026-08-29 - censurado.pdf>): búsqueda de fallos recientes sobre estafas.
-- [Ejemplo 2 · reporte sobre amparo contra IOSCOR](<./screenshots/censurados/ej 2 - Jurisprudencia · MVP MCP - 2026-08-30 - censurado.pdf>): búsqueda filtrada por materia Amparo.
-- [Ejemplo 3 · criterios jurisprudenciales en estafas](<./screenshots/censurados/ej 3 - Jurisprudencia · MVP MCP - 2026-08-30 - censurado.pdf>): otra consulta one-shot sobre estafas.
-
-Los PDFs censurados son material de demostración: las copias publicables tienen barras negras sobre nombres de partes, profesionales, expedientes, identificadores y enlaces de fuentes. Los originales se conservan localmente para pruebas, pero quedan excluidos por `.gitignore`.
-
-## Revisión previa para publicar en GitHub
-
-Se revisó el contenido local antes de publicar:
-
-- No se encontraron API keys, tokens, contraseñas, claves privadas, correos personales ni rutas absolutas del equipo.
-- `.env` está excluido por `.gitignore`; `.env.example` solo contiene nombres y valores de ejemplo.
-- `portada.png` es una conversión de la portada visual de la aplicación y no contiene información de cuenta.
-- Los PDFs originales de `screenshots/` no contienen rutas locales ni credenciales, pero sí datos públicos identificatorios de causas judiciales y por eso no se publican.
-- Las copias de `screenshots/censurados/` fueron rasterizadas y revisadas visualmente antes de incluirse.
-
-## Desarrollo local
+## Desarrollo y pruebas
 
 ```bash
 npm test
 npm start
 ```
 
-El servidor web escucha en `http://localhost:3000`. El MCP se ejecuta como un proceso hijo y el trabajo de consultas se serializa para evitar carreras en la sesión de navegador.
+public-query/ contiene la interfaz separada de consultas, portal/ contiene el portal principal y src/portal-server.mjs sirve su documentación. src/server.mjs sigue exponiendo el MCP por stdio para clientes compatibles.
 
-## Licencia y alcance
+### Reintentos
 
-Este repositorio es un prototipo técnico. El contenido jurídico pertenece a sus fuentes oficiales y la aplicación no brinda asesoramiento jurídico definitivo.
+Los errores transitorios de red o descarga pueden reintentarse automáticamente. La política `delayed` permite esperar, por ejemplo, dos minutos entre intentos. Un desafío de Cloudflare no se reintenta agresivamente: el trabajo queda como `needs_attention`, conserva sus pendientes y ofrece reintentar solo esos elementos después de resolver el acceso en el navegador/CDP. `manual` deja los fallos para continuar más tarde.
+
+El archivo no interpreta ni resume el contenido jurídico. Los PDFs se guardan para una etapa posterior de conversión, indexación y búsqueda local.
+
+## MCP
+
+El MCP se implementa en src/server.mjs y ofrece search_jurisprudencia, get_jurisprudencia_detail, get_jurisprudencia_pdf_text y diagnose_jurisprudencia_access. La página http://localhost:3002/mcp.html resume el contrato y el flujo. El modelo usado por la app de consulta se preconfigura en Compose mediante OPENCODE_MODEL, por defecto opencode/nemotron-3.5-lightning-free.
+
+## Publicación
+
+Después de revisar los cambios:
+
+    git add .
+    git commit -m "feat: add portal and split apps by port"
+    git push origin main

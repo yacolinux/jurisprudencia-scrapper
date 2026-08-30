@@ -5,3 +5,7 @@ __pycache__/
 # Ejemplos originales: contienen nombres, expedientes y URLs no censurados.
 # Las copias revisadas viven en screenshots/censurados/ y sí pueden publicarse.
 /screenshots/ej *.pdf
+
+# PDFs y estado local generado por la aplicación.
+/data/*
+!/data/.gitkeep

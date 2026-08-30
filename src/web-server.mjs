@@ -3,13 +3,20 @@ import { readFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LocalMcpClient } from "./mcp-client.mjs";
+import { JurisprudenciaClient } from "./jurisprudencia-client.mjs";
+import { ArchiveStore } from "./archive-store.mjs";
+import { BatchCollector, validateBatchInput } from "./collector.mjs";
+import { JobManager } from "./job-manager.mjs";
 import { synthesize } from "./ai.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const PUBLIC = join(ROOT, "public");
+const PUBLIC = resolve(process.env.PUBLIC_DIR || join(ROOT, "public"));
 const PORT = Number(process.env.PORT || 3000);
+const APP_MODE = process.env.APP_MODE || "archive";
+const IS_ARCHIVE = APP_MODE === "archive";
 const MAX_BODY = 100_000;
 const mcp = new LocalMcpClient({ timeoutMs: Number(process.env.MCP_TIMEOUT_MS || 120_000) });
+const DATA_DIR = resolve(process.env.DATA_DIR || join(ROOT, "data"));
 let queryQueue = Promise.resolve();
 
 const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml" };
@@ -104,6 +111,30 @@ function enqueue(task) {
   return next;
 }
 
+const archiveStore = IS_ARCHIVE ? await new ArchiveStore(DATA_DIR).init() : null;
+const bulkClient = IS_ARCHIVE ? new JurisprudenciaClient() : null;
+const collector = IS_ARCHIVE ? new BatchCollector({
+  client: bulkClient,
+  store: archiveStore,
+  pageSize: Number(process.env.BATCH_PAGE_SIZE || 100),
+  maxPages: Number(process.env.BATCH_MAX_PAGES || 500),
+  delayMs: Number(process.env.BATCH_DELAY_MS || 350)
+}) : null;
+const jobs = IS_ARCHIVE ? await new JobManager({ dataDir: DATA_DIR, collector, enqueue }).init() : null;
+
+async function serveArchiveFile(request, response, url) {
+  const relativePath = url.searchParams.get("path");
+  if (!relativePath) return json(response, 400, { error: "Falta el parámetro path" });
+  try {
+    const file = archiveStore.resolveRelative(relativePath);
+    const data = await readFile(file);
+    response.writeHead(200, { "content-type": "application/pdf", "content-disposition": `inline; filename="${file.split("/").pop()}"`, "cache-control": "public, max-age=3600" });
+    response.end(data);
+  } catch (error) {
+    return json(response, 404, { error: error.message || "PDF no encontrado" });
+  }
+}
+
 async function serveStatic(request, response, pathname) {
   const requested = pathname === "/" ? "/index.html" : pathname;
   const file = resolve(PUBLIC, `.${requested}`);
@@ -119,7 +150,7 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   try {
     if (request.method === "GET" && url.pathname === "/api/health") {
-      return json(response, 200, { ok: true, service: "mvp-jurisprudencia-web", mcpStarted: mcp.started, accessMode: process.env.JURIS_ACCESS_MODE || "auto", ai: process.env.OPENCODE_ENABLED === "1" ? "opencode" : "local-fallback" });
+      return json(response, 200, { ok: true, service: `${APP_MODE}-jurisprudencia-web`, appMode: APP_MODE, mcpStarted: mcp.started, accessMode: process.env.JURIS_ACCESS_MODE || "auto", ...(IS_ARCHIVE ? { dataDir: DATA_DIR, archive: await archiveStore.summary() } : {}) });
     }
     if (request.method === "GET" && url.pathname === "/api/diagnose") {
       const diagnosis = await enqueue(() => mcp.callTool("diagnose_jurisprudencia_access"));
@@ -130,19 +161,45 @@ const server = createServer(async (request, response) => {
       const result = await enqueue(() => runQuery(input));
       return json(response, 200, result);
     }
+    if (IS_ARCHIVE && request.method === "GET" && url.pathname === "/api/archive/summary") return json(response, 200, await archiveStore.summary());
+    if (IS_ARCHIVE && request.method === "GET" && url.pathname === "/api/archive/documents") {
+      return json(response, 200, { documents: await archiveStore.list({ year: url.searchParams.get("year"), month: url.searchParams.get("month"), limit: url.searchParams.get("limit") }) });
+    }
+    if (IS_ARCHIVE && request.method === "GET" && url.pathname === "/api/archive/file") return serveArchiveFile(request, response, url);
+    if (IS_ARCHIVE && request.method === "GET" && url.pathname === "/api/jobs") return json(response, 200, { jobs: await jobs.list() });
+    if (IS_ARCHIVE && request.method === "POST" && url.pathname === "/api/jobs") {
+      const input = await body(request);
+      const normalized = validateBatchInput(input);
+      return json(response, 202, { job: await jobs.start(normalized) });
+    }
+    const jobPath = url.pathname.match(/^\/api\/jobs\/([^/]+)(\/(?:cancel|retry))?$/);
+    const jobId = jobPath?.[1] ? decodeURIComponent(jobPath[1]) : null;
+    if (IS_ARCHIVE && jobId && !jobPath?.[2] && request.method === "GET") {
+      const job = await jobs.get(jobId);
+      return job ? json(response, 200, { job }) : json(response, 404, { error: "Ejecución no encontrada" });
+    }
+    if (IS_ARCHIVE && jobId && jobPath?.[2] === "/cancel" && request.method === "POST") {
+      const job = await jobs.cancel(jobId);
+      return job ? json(response, 202, { job }) : json(response, 404, { error: "Ejecución no encontrada" });
+    }
+    if (IS_ARCHIVE && jobId && jobPath?.[2] === "/retry" && request.method === "POST") {
+      const input = await body(request);
+      return json(response, 202, { job: await jobs.retry(jobId, input.retry || input) });
+    }
     if (request.method === "GET") return serveStatic(request, response, url.pathname);
     return json(response, 405, { error: "Método no permitido" });
   } catch (error) {
-    const status = ["INVALID_QUERY", "INVALID_JSON", "BODY_TOO_LARGE"].includes(error.code) ? 400 : error.code === "CHALLENGE_REQUIRED" ? 503 : 502;
+    const status = error.code === "JOB_ALREADY_RUNNING" ? 409 : error.code === "NO_RETRY_ITEMS" ? 422 : ["INVALID_QUERY", "INVALID_JSON", "BODY_TOO_LARGE", "INVALID_YEAR", "INVALID_MONTH"].includes(error.code) ? 400 : error.code === "CHALLENGE_REQUIRED" ? 503 : 502;
     return json(response, status, errorPayload(error));
   }
 });
 
-server.listen(PORT, "0.0.0.0", () => console.log(`MVP web escuchando en http://0.0.0.0:${PORT}`));
+server.listen(PORT, "0.0.0.0", () => console.log(`${APP_MODE} web escuchando en http://0.0.0.0:${PORT}`));
 
 async function shutdown() {
   server.close();
   await mcp.close();
+  await bulkClient?.close();
   process.exit(0);
 }
 process.once("SIGINT", shutdown);

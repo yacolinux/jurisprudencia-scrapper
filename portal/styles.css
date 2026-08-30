@@ -1,0 +1,13 @@
+:root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #233a50; background: #f3f7fa; }
+* { box-sizing: border-box; } body { margin: 0; }
+.hero { padding: 72px max(24px, calc((100% - 1120px) / 2)); color: white; background: linear-gradient(120deg, #1d527b, #20a6ba); }
+.hero.compact { padding-top: 36px; padding-bottom: 44px; } .hero h1 { max-width: 800px; margin: 12px 0 18px; font-size: clamp(2.2rem, 5vw, 4.5rem); line-height: 1.05; letter-spacing: -.04em; }
+.hero.compact h1 { font-size: clamp(2.2rem, 5vw, 3.8rem); } .hero p:not(.eyebrow) { max-width: 760px; font-size: 1.15rem; line-height: 1.6; opacity: .9; }
+.eyebrow { font-size: .78rem; font-weight: 800; letter-spacing: .18em; opacity: .8; } .back, footer a { color: inherit; }
+main { max-width: 1120px; margin: 0 auto; padding: 36px 24px 56px; } .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: -66px; position: relative; }
+.card, .panel { display: block; background: white; border-radius: 14px; padding: 26px; box-shadow: 0 12px 30px #18364c18; text-decoration: none; color: inherit; border-top: 6px solid #2aabc0; }
+.card.blue { border-color: #4e7295; } .card.dark { border-color: #25384c; } .number { font-weight: 800; color: #71869a; } .card h2 { margin: 30px 0 12px; font-size: 1.45rem; } .card p { min-height: 74px; color: #65798b; line-height: 1.5; } .action { color: #138eaa; font-weight: 800; }
+.architecture { padding-top: 72px; } .architecture h2 { font-size: 2rem; } .flow { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin: 28px 0; } .flow span { background: #e4f4f6; border-radius: 10px; padding: 16px 28px; font-weight: 800; text-align: center; } .flow small { color: #168eae; }
+.architecture p, .panel p, dd { line-height: 1.65; color: #5d7285; } .doc { max-width: 900px; } .panel { margin-bottom: 18px; border-top-width: 3px; } dt { margin-top: 18px; color: #1c6d8c; font-weight: 800; } dd { margin: 5px 0 0; } pre { white-space: pre-wrap; background: #eff5f7; padding: 18px; border-radius: 8px; overflow: auto; } code { background: #edf1f4; padding: 2px 5px; border-radius: 4px; }
+footer { padding: 26px max(24px, calc((100% - 1120px) / 2)); background: #233a50; color: white; } footer a { margin-right: 12px; }
+@media (max-width: 800px) { .cards { grid-template-columns: 1fr; margin-top: -30px; } .card p { min-height: 0; } .hero { padding-top: 48px; } }

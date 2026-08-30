@@ -3,62 +3,43 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Jurisprudencia · MVP MCP</title>
+    <title>Archivo de Jurisprudencia · STJ Corrientes</title>
     <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .retry-grid{display:grid;grid-template-columns:2fr .7fr 1fr;gap:12px}.retry-hint{color:var(--muted);font-size:11px;margin:10px 0 0}.status-stats{grid-template-columns:repeat(7,1fr)}.status-badge.needs_attention{background:#fff0d9;color:#ae7021}.retry-link{display:block;border:0;background:transparent;color:var(--cyan);cursor:pointer;font:500 10px 'DM Mono';padding:8px 0 0;margin-left:auto}.retry-link:hover{text-decoration:underline}@media(max-width:820px){.retry-grid{grid-template-columns:1fr}.status-stats{grid-template-columns:repeat(4,1fr);gap:10px}.status-stats div:nth-child(4){border:0}}
+    </style>
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
-        <div class="brand-mark">J</div>
-        <div>
-          <p class="eyebrow">MCP · STJ CORRIENTES</p>
-          <h1>Consulta jurídica en una sola ejecución</h1>
-        </div>
-        <button class="diagnose" id="diagnose">Verificar MCP</button>
+        <div class="brand-mark">A</div>
+        <div><p class="eyebrow">ARCHIVO LOCAL · STJ CORRIENTES</p><h1>Captura organizada de fallos</h1></div>
+        <div class="top-actions"><span class="online"><i></i> LISTO</span><button id="diagnose" class="quiet">Diagnosticar acceso</button></div>
       </header>
 
       <section class="hero">
-        <div>
-          <p class="kicker">FUENTE OFICIAL + PROCESAMIENTO IA</p>
-          <h2>Una pregunta. Un expediente de contexto. Una respuesta verificable.</h2>
-          <p class="lede">Probá el flujo completo: la app consulta el MCP de jurisprudencia, recupera fallos públicos y prepara una salida preliminar con fuentes.</p>
-        </div>
-        <div class="hero-note"><span>01</span><p>Sin chat persistente<br />ni autenticación</p></div>
+        <div><p class="kicker">RECOLECCIÓN AUTOMÁTICA POR LOTE</p><h2>Elegí un mes.<br /><em>Guardá el archivo.</em></h2><p class="lede">La app recorre el buscador oficial por año y materia, identifica los fallos del mes y conserva cada PDF en carpetas navegables desde el filesystem.</p></div>
+        <div class="hero-note"><span>ESTRATEGIA</span><strong>Año + materia<br />Paginación de 100<br />Filtro local de fecha</strong></div>
       </section>
 
       <section class="workspace">
-        <form id="query-form" class="card query-card">
-          <div class="card-heading"><div><p class="eyebrow">EJECUTAR CONSULTA</p><h3>¿Qué necesitás investigar?</h3></div><span class="status-dot">ONLINE</span></div>
-          <label for="question">Pregunta jurídica</label>
-          <textarea id="question" name="question" rows="6" placeholder="Ej.: ¿Qué criterios recientes aparecen en fallos de amparo contra el Instituto de Previsión Social?" required></textarea>
-          <div class="form-grid">
-            <div><label for="searchText">Términos de búsqueda <span>(opcional)</span></label><input id="searchText" name="searchText" placeholder="amparo Instituto de Previsión Social" /></div>
-            <div><label for="materia">Materia <span>(opcional)</span></label><select id="materia" name="materia"><option value="">Todas</option><option>Amparo</option><option>Civil y Comercial</option><option>Laboral</option><option>Penal</option><option>Menores</option><option>Electoral</option></select></div>
-          </div>
-          <div class="form-footer">
-            <div class="segmented"><label><input type="radio" name="mode" value="single" checked /><span>Respuesta puntual</span></label><label><input type="radio" name="mode" value="report" /><span>Reporte preliminar</span></label></div>
-            <button class="primary" type="submit" id="submit">Consultar <span>↗</span></button>
-          </div>
-          <p class="form-hint">La búsqueda recupera hasta 3 documentos y hasta 18.000 caracteres por PDF para mantener el MVP ágil.</p>
+        <form id="batch-form" class="card capture-card">
+          <div class="card-heading"><div><p class="eyebrow">NUEVA EJECUCIÓN</p><h3>¿Qué período querés archivar?</h3></div><span class="pill">PDF ORIGINAL</span></div>
+          <div class="period-grid"><label>Año<input id="year" name="year" type="number" min="1900" step="1" required /></label><label>Mes<select id="month" name="month" required></select></label></div>
+          <fieldset><legend>Materia <span>podés elegir una o varias</span></legend><label class="all-matter"><input id="all-matters" type="checkbox" checked /> Todas las materias</label><div id="matters" class="matter-grid"></div></fieldset>
+          <fieldset class="retry-field"><legend>Si un PDF falla <span>por ejemplo, por Cloudflare o una interrupción de red</span></legend><div class="retry-grid"><label>Política<select id="retry-mode"><option value="manual" selected>Manual: continuar luego</option><option value="automatic">Automática: reintentar ahora</option><option value="delayed">Diferida: esperar antes de reintentar</option></select></label><label>Reintentos<input id="retry-attempts" type="number" min="0" max="5" value="2" /></label><label>Espera (segundos)<input id="retry-delay" type="number" min="0" max="3600" value="120" /></label></div><p class="retry-hint">Los desafíos de Cloudflare siempre requieren atención y no se repiten agresivamente.</p></fieldset>
+          <div class="form-footer"><p>Los PDFs existentes se detectan por ID y no se vuelven a bajar.</p><button class="primary" type="submit" id="submit">Lanzar captura <span>↗</span></button></div>
         </form>
 
-        <aside class="card flow-card">
-          <p class="eyebrow">QUÉ PASA DETRÁS</p>
-          <div class="flow"><div class="flow-item active"><b>01</b><span>Pregunta one-shot</span></div><i></i><div class="flow-item"><b>02</b><span>Herramientas MCP</span></div><i></i><div class="flow-item"><b>03</b><span>Contexto de fallos</span></div><i></i><div class="flow-item"><b>04</b><span>Respuesta IA</span></div></div>
-          <div class="tech-note"><strong>Modo de acceso</strong><span id="access-mode">auto · directo + fallback Xvfb</span></div>
-          <div class="tech-note"><strong>Modelo</strong><span id="ai-mode">fallback local reproducible</span></div>
-        </aside>
+        <aside class="card strategy-card"><p class="eyebrow">CÓMO SE ORGANIZA</p><div class="path-preview"><span>/data</span><b>/2026</b><b>/08-agosto</b><b>/semana-35</b><b>/25-08-2026</b><b>/amparo</b><strong>/000123-25-08-2026-caratula.pdf</strong></div><div class="tech-note"><strong>Persistencia</strong><span>Bind mount local<br />./data → /data</span></div><div class="tech-note"><strong>Índice auxiliar</strong><span>manifest.json<br />+ metadata por PDF</span></div><div class="tech-note"><strong>Reanudable</strong><span>Estado de cada trabajo<br />guardado en .state</span></div></aside>
       </section>
 
-      <section id="loading" class="card loading hidden"><div class="spinner"></div><div><strong>Consultando el MCP…</strong><p>El portal puede tardar unos segundos mientras valida la sesión.</p></div></section>
-      <section id="error" class="card error hidden"><div class="error-icon">!</div><div><strong id="error-title">No se pudo completar la consulta</strong><p id="error-message"></p><pre id="error-state" class="hidden"></pre></div></section>
-      <section id="result" class="result hidden">
-        <div class="result-header"><div><p class="eyebrow">SALIDA DE LA EJECUCIÓN</p><h2 id="result-title">Resultado</h2></div><button class="ghost" id="new-query">Nueva consulta</button></div>
-        <div class="result-grid"><article class="card answer-card"><div class="answer-meta"><span id="provider-badge">LOCAL</span><span id="generated-at"></span></div><div id="answer" class="answer"></div></article><aside class="card sources-card"><div class="card-heading"><div><p class="eyebrow">EVIDENCIA RECUPERADA</p><h3 id="source-count">Fuentes</h3></div></div><div id="sources"></div></aside></div>
-        <details class="raw-details"><summary>Ver datos MCP crudos</summary><pre id="raw"></pre></details>
-        <p class="disclaimer">Prototipo de investigación. No reemplaza el análisis profesional ni la lectura del fallo original.</p>
-      </section>
-      <footer><span>api-remota / mvp</span><span>STJ Corrientes · fuente pública</span></footer>
+      <section id="status" class="card status-card hidden"><div class="status-top"><div><p class="eyebrow">EJECUCIÓN EN VIVO</p><h3 id="status-title">Preparando…</h3></div><span id="status-badge" class="status-badge">EN COLA</span></div><div class="progress-track"><div id="progress-bar"></div></div><div class="status-stats"><div><strong id="stat-pages">0</strong><span>páginas</span></div><div><strong id="stat-candidates">0</strong><span>encontrados</span></div><div><strong id="stat-filtered">0</strong><span>del período</span></div><div><strong id="stat-downloaded">0</strong><span>descargados</span></div><div><strong id="stat-cached">0</strong><span>en caché</span></div><div><strong id="stat-without-pdf">0</strong><span>sin PDF</span></div><div><strong id="stat-errors">0</strong><span>errores</span></div></div><p id="status-message" class="status-message">Iniciando el proceso…</p><div id="events" class="events"></div></section>
+
+      <section class="archive-section"><div class="section-heading"><div><p class="eyebrow">ARCHIVO LOCAL</p><h2>Lo que ya está guardado</h2></div><span id="archive-updated" class="muted">Sin archivos todavía</span></div><div class="summary-grid"><div class="card summary-card accent"><strong id="summary-total">0</strong><span>PDFs guardados</span></div><div class="card summary-card"><strong id="summary-years">—</strong><span>años cubiertos</span></div><div class="card summary-card"><strong id="summary-matters">—</strong><span>materias</span></div><div class="card summary-card"><strong id="summary-root">./data</strong><span>directorio local</span></div></div><div class="card jobs-card"><div class="card-heading"><div><p class="eyebrow">HISTORIAL</p><h3>Últimas capturas</h3></div><button id="refresh" class="quiet">Actualizar</button></div><div id="jobs"><p class="empty">Todavía no se ejecutó ninguna captura.</p></div></div></section>
+
+      <section id="error" class="card error hidden"><div class="error-icon">!</div><div><strong id="error-title">No se pudo completar la operación</strong><p id="error-message"></p></div></section>
+      <footer><span>archivo-jurisprudencia / v0.2</span><span>Los archivos quedan en el directorio local configurado</span></footer>
     </main>
     <script src="/app.js" type="module"></script>
   </body>
