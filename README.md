@@ -84,11 +84,11 @@ La app de consulta mantiene el endpoint compatible POST /api/query en el puerto 
 
 ## Consulta local y ampliación remota
 
-La consulta trabaja por defecto en modo local y no destructivo. Lee data/manifest.json, metadatos laterales y los PDFs existentes; cuando hace falta, extrae texto mediante pdftotext sin escribir archivos auxiliares. El servicio monta data como solo lectura (data:ro), por lo que esta aplicación no puede borrar, reemplazar, renombrar ni descargar documentos.
+La consulta trabaja por defecto en modo local y no destructivo respecto de los documentos originales. Lee primero data/manifest.json y los metadatos laterales .pdf.json, filtrando por año, mes y materia/categoría. Si un PDF seleccionado todavía no tiene su .md, genera un Markdown derivado una sola vez mediante pdftotext; nunca modifica el PDF ni el JSON. Luego la IA recibe exclusivamente los .md. El servicio monta la fuente archivada como solo lectura y dispone de una ruta separada para agregar únicamente esos derivados Markdown.
 
 El checkbox Ampliar con consulta remota (MCP) agrega la búsqueda oficial, el detalle y el texto PDF remoto a los resultados locales. Si el sitio remoto o Cloudflare no están disponibles, la aplicación conserva la respuesta local y devuelve la advertencia, sin convertir la consulta local en un fallo.
 
-La respuesta de la API incluye queryMode, readOnly y sources.local/sources.remote para distinguir el origen de cada material. LOCAL_PDF_SCAN_LIMIT limita el escaneo de PDFs cuando no hay coincidencias en los metadatos.
+La respuesta de la API incluye queryMode, nonDestructive, sourceReadOnly, derivedMarkdownOnly, derivedMarkdownCreated y sources.local/sources.remote para distinguir el origen de cada material. LOCAL_PDF_SCAN_LIMIT limita el escaneo de PDFs cuando no hay coincidencias en los metadatos.
 
 ## Captura de un año completo
 

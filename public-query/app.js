@@ -10,8 +10,10 @@ $("form").addEventListener("submit", async (event) => {
   $("answer").hidden = true;
   $("results").hidden = true;
   const includeRemote = $("includeRemote").checked;
-  $("status").textContent = includeRemote ? "Leyendo archivo local y ampliando con el MCP remoto…" : "Buscando en el archivo local (modo solo lectura)…";
+  $("status").textContent = includeRemote ? "Leyendo JSON/Markdown local y ampliando con el MCP remoto…" : "Buscando en JSON/Markdown local, sin tocar PDFs ni JSON…";
   const filters = {};
+  if ($("year").value) filters.year = Number($("year").value);
+  if ($("month").value) filters.month = Number($("month").value);
   if ($("materia").value.trim()) filters.materias = [$("materia").value.trim()];
   try {
     const response = await fetch("/api/query", {
@@ -44,7 +46,7 @@ $("form").addEventListener("submit", async (event) => {
     }).join("") || "<p class=\"muted\">No hubo resultados.</p>";
     $("results").hidden = false;
     $("raw").textContent = JSON.stringify(data, null, 2);
-    $("status").textContent = (data.readOnly ? "✓ Modo no destructivo · " : "") + "Consulta completada: " + new Date(data.generatedAt || Date.now()).toLocaleString("es-AR") + (data.warning ? " · " + data.warning : "");
+    $("status").textContent = (data.nonDestructive ? "✓ Modo no destructivo · " : "") + "Consulta completada: " + new Date(data.generatedAt || Date.now()).toLocaleString("es-AR") + ((localInfo?.createdMarkdown || 0) ? " · .md nuevos: " + localInfo.createdMarkdown : "") + (data.warning ? " · " + data.warning : "");
   } catch (error) {
     $("error").textContent = error.message;
     $("error").hidden = false;

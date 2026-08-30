@@ -1,7 +1,7 @@
-import { access, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { spawn } from "node:child_process";
-import { extname, join, resolve, sep } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { parseCourtDate } from "./archive-store.mjs";
 
 const STOPWORDS = new Set("qué que sobre para del las los una uno con desde entre necesito quiero buscá busca buscar analizar explicá explicar informe reporte consulta jurisprudencia fallo fallos relevante podrían caso instituto poder judicial corrientes".split(" "));
@@ -81,13 +81,57 @@ export function resolveLocalPdf(root, relativePath) {
   return file;
 }
 
+function resolveLocalMarkdown(root, relativePath) {
+  const archiveRoot = resolve(root);
+  const markdownPath = String(relativePath || "").replace(/\.pdf$/i, ".md");
+  const file = resolve(archiveRoot, markdownPath);
+  if (!file.startsWith(archiveRoot + sep) || extname(file).toLocaleLowerCase() !== ".md") {
+    throw Object.assign(new Error("Archivo Markdown local no permitido"), { code: "LOCAL_FILE_NOT_ALLOWED" });
+  }
+  return file;
+}
+
 export class LocalArchiveSearch {
-  constructor(root, { pdfScanLimit = Number(process.env.LOCAL_PDF_SCAN_LIMIT || 80), maxPdfChars = Number(process.env.MAX_PDF_CHARS || 18_000), pdfTimeoutMs = Number(process.env.LOCAL_PDF_TIMEOUT_MS || 12_000) } = {}) {
+  constructor(root, { writeRoot = process.env.DATA_WRITE_DIR || root, pdfScanLimit = Number(process.env.LOCAL_PDF_SCAN_LIMIT || 80), maxPdfChars = Number(process.env.MAX_PDF_CHARS || 18_000), pdfTimeoutMs = Number(process.env.LOCAL_PDF_TIMEOUT_MS || 12_000) } = {}) {
     this.root = resolve(root);
+    this.writeRoot = resolve(writeRoot);
     this.manifestPath = join(this.root, "manifest.json");
     this.pdfScanLimit = Math.max(0, pdfScanLimit);
     this.maxPdfChars = maxPdfChars;
     this.pdfTimeoutMs = pdfTimeoutMs;
+  }
+
+  async ensureMarkdown(document) {
+    if (!document.path) return { content: "", created: false, path: null };
+    const markdownPath = document.path.replace(/\.pdf$/i, ".md");
+    try {
+      return { content: await readFile(resolveLocalMarkdown(this.root, document.path), "utf8"), created: false, path: markdownPath };
+    } catch (error) {
+      if (error.code !== "ENOENT") return { content: "", created: false, path: markdownPath };
+    }
+    let extracted = "";
+    try {
+      const file = resolveLocalPdf(this.root, document.path);
+      if (await fileExists(file)) extracted = await extractPdfText(file, this.maxPdfChars, this.pdfTimeoutMs);
+    } catch {
+      extracted = "";
+    }
+    if (!extracted) return { content: "", created: false, path: markdownPath };
+    const target = resolveLocalMarkdown(this.writeRoot, document.path);
+    const markdown = "# " + (document.caratula || document.fallo || "Fallo") + "\n\n" + extracted.trim() + "\n";
+    let created = false;
+    try {
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, markdown, { flag: "wx" });
+      created = true;
+    } catch (error) {
+      if (error.code !== "EEXIST") return { content: "", created: false, path: markdownPath };
+    }
+    try {
+      return { content: await readFile(target, "utf8"), created, path: markdownPath };
+    } catch {
+      return { content: "", created: false, path: markdownPath };
+    }
   }
 
   async readManifest() {
@@ -102,13 +146,25 @@ export class LocalArchiveSearch {
     }
   }
 
+  async readSidecarMetadata(document) {
+    if (!document.path) return document;
+    const metadataPath = document.path.replace(/\.pdf$/i, ".pdf.json");
+    try {
+      const metadata = JSON.parse(await readFile(resolve(this.root, metadataPath), "utf8"));
+      return { ...document, ...metadata, path: document.path, metadataPath };
+    } catch {
+      return { ...document, metadataPath };
+    }
+  }
+
   async search({ question = "", searchText = "", filters = {}, limit = 10 } = {}) {
     const manifest = await this.readManifest();
     const terms = termsFrom(searchText || question);
     const requestedMatter = termsFrom(filters.materia || filters.materias?.[0] || "");
     const requestedYear = Number(filters.anio || filters.year || 0);
     const requestedMonth = Number(filters.mes || filters.month || 0);
-    const periodCandidates = manifest.documents.filter((document) => {
+    const indexedCandidates = await Promise.all(manifest.documents.map((document) => this.readSidecarMetadata(document)));
+    const periodCandidates = indexedCandidates.filter((document) => {
       const date = parseCourtDate(document.fecha);
       const matterMatch = !requestedMatter.length || requestedMatter.every((term) => normalize(document.materia).includes(term));
       return (!requestedYear || date?.year === requestedYear) && (!requestedMonth || date?.month === requestedMonth) && matterMatch;
@@ -121,17 +177,14 @@ export class LocalArchiveSearch {
     const selected = (metadataMatched ? matchingCandidates : periodCandidates.map((document, index) => ({ document, score: 0, index })))
       .slice(0, metadataMatched ? Math.min(Number(limit) || 10, 50) : this.pdfScanLimit);
     const documents = [];
+    let createdMarkdown = 0;
     for (const { document } of selected) {
-      let content = "";
+      const markdown = await this.ensureMarkdown(document);
+      if (markdown.created) createdMarkdown += 1;
+      const content = markdown.content;
       let pdfAvailable = false;
       if (document.path) {
-        try {
-          const file = resolveLocalPdf(this.root, document.path);
-          pdfAvailable = await fileExists(file);
-          if (pdfAvailable) content = await extractPdfText(file, this.maxPdfChars, this.pdfTimeoutMs);
-        } catch {
-          content = "";
-        }
+        try { pdfAvailable = await fileExists(resolveLocalPdf(this.root, document.path)); } catch {}
       }
       if (!metadataMatched && terms.length && !terms.some((term) => normalize(content).includes(term))) continue;
       documents.push({
@@ -144,18 +197,24 @@ export class LocalArchiveSearch {
         source: document.source || ("local:" + (document.path || "")),
         pdfUrl: pdfAvailable && document.path ? "/api/local/file?path=" + encodeURIComponent(document.path) : null,
         localPath: document.path || null,
+        metadataPath: document.metadataPath || null,
+        metadata: document,
+        markdownPath: markdown.path,
+        markdownCreated: markdown.created,
         content,
         pdf: { chars: content.length, truncated: content.length >= this.maxPdfChars },
         local: true
       });
     }
-    const results = documents.map(({ content, pdf, ...result }) => ({ ...result, local: true, hasPdfText: Boolean(content), pdfAvailable: Boolean(result.pdfUrl) }));
+    const visibleDocuments = documents.slice(0, Math.min(Number(limit) || 10, 50));
+    const results = visibleDocuments.map(({ content, pdf, ...result }) => ({ ...result, local: true, hasMarkdown: Boolean(content), pdfAvailable: Boolean(result.pdfUrl) }));
     return {
       search: { source: "local-archive", total: results.length, page: 1, totalPages: 1, results },
-      documents,
+      documents: visibleDocuments,
       indexed: manifest.documents.length,
       periodCandidates: periodCandidates.length,
       scannedPdfs: selected.length,
+      createdMarkdown,
       updatedAt: manifest.updatedAt,
       matchStrategy: metadataMatched ? "metadata" : "pdf-scan"
     };

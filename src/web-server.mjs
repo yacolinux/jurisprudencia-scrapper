@@ -152,9 +152,12 @@ async function runQuery(input) {
     question,
     mode,
     queryMode: input.includeRemote === true ? "local+remote" : "local-only",
-    readOnly: true,
+    nonDestructive: true,
+    sourceReadOnly: true,
+    derivedMarkdownOnly: true,
+    derivedMarkdownCreated: local.createdMarkdown,
     sources: {
-      local: { enabled: true, indexed: local.indexed, periodCandidates: local.periodCandidates, scannedPdfs: local.scannedPdfs, matchStrategy: local.matchStrategy, updatedAt: local.updatedAt },
+      local: { enabled: true, indexed: local.indexed, periodCandidates: local.periodCandidates, scannedPdfs: local.scannedPdfs, createdMarkdown: local.createdMarkdown, matchStrategy: local.matchStrategy, updatedAt: local.updatedAt },
       remote
     },
     search: { source: search.source, total: search.total, page: search.page, totalPages: search.totalPages, results: search.results || [] },
@@ -211,7 +214,7 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   try {
     if (request.method === "GET" && url.pathname === "/api/health") {
-      return json(response, 200, { ok: true, service: `${APP_MODE}-jurisprudencia-web`, appMode: APP_MODE, mcpStarted: mcp.started, readOnlyQuery: !IS_ARCHIVE, dataDir: DATA_DIR, accessMode: process.env.JURIS_ACCESS_MODE || "auto", ...(IS_ARCHIVE ? { archive: await archiveStore.summary() } : {}) });
+      return json(response, 200, { ok: true, service: `${APP_MODE}-jurisprudencia-web`, appMode: APP_MODE, mcpStarted: mcp.started, nonDestructiveQuery: !IS_ARCHIVE, derivedMarkdownOnly: !IS_ARCHIVE, dataDir: DATA_DIR, accessMode: process.env.JURIS_ACCESS_MODE || "auto", ...(IS_ARCHIVE ? { archive: await archiveStore.summary() } : {}) });
     }
     if (request.method === "GET" && url.pathname === "/api/diagnose") {
       const diagnosis = await enqueue(() => mcp.callTool("diagnose_jurisprudencia_access"));

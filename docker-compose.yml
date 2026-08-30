@@ -52,6 +52,7 @@ services:
       APP_MODE: query
       PUBLIC_DIR: /app/public-query
       DATA_DIR: /data
+      DATA_WRITE_DIR: /data-write
       DATA_READ_ONLY: "1"
       JURIS_ACCESS_MODE: ${JURIS_ACCESS_MODE:-auto}
       JURIS_HEADLESS: ${JURIS_HEADLESS:-0}
@@ -65,9 +66,10 @@ services:
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
     init: true
     restart: "no"
-    # Consulta solo lee el archivo existente: nunca puede escribir en /data.
+    # Consulta lee /data como fuente; solo agrega .md derivados mediante /data-write.
     volumes:
       - ${DATA_DIR:-./data}:/data:ro
+      - ${DATA_DIR:-./data}:/data-write:rw
     security_opt:
       - seccomp=unconfined
 

@@ -11,12 +11,12 @@
       <header class="topbar">
         <div class="brand-mark">Q</div>
         <div><p class="eyebrow">CONSULTA INTELIGENTE · STJ CORRIENTES</p><h1>Jurisprudencia asistida</h1></div>
-        <div class="top-actions"><span class="online"><i></i> ARCHIVO LOCAL · SOLO LECTURA</span><a class="quiet" href="http://localhost:3002">Portal principal</a><a class="quiet" href="http://localhost:3000">Archivo local</a></div>
+        <div class="top-actions"><span class="online"><i></i> ARCHIVO LOCAL · NO DESTRUCTIVO</span><a class="quiet" href="http://localhost:3002">Portal principal</a><a class="quiet" href="http://localhost:3000">Archivo local</a></div>
       </header>
 
       <section class="hero">
-        <div><p class="kicker">BÚSQUEDA + LECTURA + SÍNTESIS</p><h2>Preguntá por un fallo.<br><em>Entendé el contexto.</em></h2><p class="lede">La consulta combina el buscador oficial, el detalle de cada resultado y el texto de sus PDFs. El modelo LLM configurado transforma ese material en una respuesta clara y trazable.</p></div>
-        <div class="hero-note"><span>FLUJO DE IA</span><strong>Buscar en el portal<br>Leer detalle y PDF<br>Sintetizar la respuesta</strong></div>
+        <div><p class="kicker">JSON + MARKDOWN + SÍNTESIS</p><h2>Preguntá por un fallo.<br><em>Entendé el contexto.</em></h2><p class="lede">La consulta filtra primero los metadatos archivados y luego lee únicamente los Markdown derivados de los PDFs. El modelo LLM configurado transforma ese material en una respuesta clara y trazable.</p></div>
+        <div class="hero-note"><span>FLUJO LOCAL DE IA</span><strong>Filtrar el JSON<br>Leer el Markdown<br>Sintetizar la respuesta</strong></div>
       </section>
 
       <section class="workspace">
@@ -24,20 +24,24 @@
           <div class="card-heading"><div><p class="eyebrow">NUEVA CONSULTA</p><h3>¿Qué querés investigar?</h3></div><span class="pill ai-pill"><b>✦</b> IA ASISTIDA</span></div>
           <label for="question">Pregunta en lenguaje natural</label>
           <textarea id="question" required minlength="5" placeholder="Ej.: ¿Qué criterios usa el STJ en fallos de amparo sobre cobertura de salud?"></textarea>
-          <div class="field-grid">
-            <label for="searchText">Términos para el buscador <span>opcional</span><input id="searchText" placeholder="Ej.: amparo cobertura salud"></label>
-            <label for="materia">Materia <span>opcional</span><input id="materia" placeholder="Ej.: Amparo"></label>
+          <div class="filter-grid">
+            <label for="year">Año <span>opcional</span><input id="year" type="number" min="1900" max="2100" placeholder="Todos"></label>
+            <label for="month">Mes <span>opcional</span><select id="month"><option value="">Todos los meses</option><option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option><option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option><option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option></select></label>
+            <label for="materia">Materia / categoría <span>opcional</span><select id="materia"><option value="">Todas las categorías</option><option>Amparo</option><option>Civil y Comercial</option><option>Conflicto de Poderes</option><option>Electoral</option><option>Habeas Data</option><option>Laboral</option><option>Menores</option><option>Penal</option><option>Proc. Administrativo</option><option>Superintendencia</option></select></label>
           </div>
-          <label class="remote-toggle"><input id="includeRemote" type="checkbox"><span><strong>Ampliar con consulta remota (MCP)</strong><small>Usa el portal oficial además del archivo local. No modifica ni descarga nada en esta aplicación.</small></span></label>
+          <div class="field-grid">
+            <label for="searchText">Términos adicionales <span>opcional</span><input id="searchText" placeholder="Ej.: cobertura salud"></label>
+          </div>
+          <label class="remote-toggle"><input id="includeRemote" type="checkbox"><span><strong>Ampliar con consulta remota (MCP)</strong><small>Usa el portal oficial además del archivo local. No modifica PDFs ni JSON; puede agregar un .md derivado si falta.</small></span></label>
           <fieldset><legend>Tipo de respuesta</legend><div class="mode-grid"><label class="mode-option"><input type="radio" name="mode" value="single" checked><span><strong>Respuesta breve</strong><small>Una síntesis directa para orientarte.</small></span></label><label class="mode-option"><input type="radio" name="mode" value="report"><span><strong>Informe comparativo</strong><small>Más contexto y documentos recuperados.</small></span></label></div></fieldset>
-          <div class="form-footer"><p><strong>El MCP hace el trabajo pesado.</strong><br>Consulta · detalle · texto PDF · síntesis LLM</p><button class="primary" id="submit" type="submit">Consultar con IA <span>↗</span></button></div>
+          <div class="form-footer"><p><strong>El archivo local es la primera fuente.</strong><br>JSON · Markdown · síntesis LLM</p><button class="primary" id="submit" type="submit">Consultar con IA <span>↗</span></button></div>
         </form>
 
         <aside class="card method-card">
           <p class="eyebrow">CÓMO RESPONDE</p>
           <div class="method-flow"><div><b>01</b><strong>Busca</strong><span>Filtros nativos<br>del portal remoto</span></div><div><b>02</b><strong>Lee</strong><span>Detalle y PDF<br>de cada fallo</span></div><div><b>03</b><strong>Explica</strong><span>Respuesta con<br>modelo LLM</span></div></div>
           <div class="tech-note"><strong>Modelo</strong><span>OPENCODE_MODEL<br>configurado en Compose</span></div>
-          <div class="tech-note"><strong>Fuente</strong><span>Resultados oficiales<br>y PDF original</span></div>
+          <div class="tech-note"><strong>Fuente</strong><span>JSON primero<br>Markdown después</span></div>
           <a class="doc-link" href="http://localhost:3002/mcp.html">Conocer el MCP construido →</a>
         </aside>
       </section>
