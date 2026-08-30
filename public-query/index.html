@@ -32,7 +32,7 @@
           <div class="field-grid">
             <label for="searchText">Términos adicionales <span>opcional</span><input id="searchText" placeholder="Ej.: cobertura salud"></label>
           </div>
-          <label class="remote-toggle"><input id="includeRemote" type="checkbox"><span><strong>Ampliar con consulta remota (MCP)</strong><small>Usa el portal oficial además del archivo local. No modifica PDFs ni JSON; puede agregar un .md derivado si falta.</small></span></label>
+          <label class="remote-toggle"><input id="includeRemote" type="checkbox"><span><strong>Ampliar con consulta remota (MCP)</strong><small>Busca faltantes en el portal oficial y guarda solo PDFs que no existan localmente, con su .md derivado. Nunca reemplaza PDFs ni JSON.</small></span></label>
           <fieldset><legend>Tipo de respuesta</legend><div class="mode-grid"><label class="mode-option"><input type="radio" name="mode" value="single" checked><span><strong>Respuesta breve</strong><small>Una síntesis directa para orientarte.</small></span></label><label class="mode-option"><input type="radio" name="mode" value="report"><span><strong>Informe comparativo</strong><small>Más contexto y documentos recuperados.</small></span></label></div></fieldset>
           <div class="form-footer"><p><strong>El archivo local es la primera fuente.</strong><br>JSON · Markdown · síntesis LLM</p><button class="primary" id="submit" type="submit">Consultar con IA <span>↗</span></button></div>
         </form>

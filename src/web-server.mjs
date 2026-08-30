@@ -9,6 +9,7 @@ import { BatchCollector, validateBatchInput } from "./collector.mjs";
 import { JobManager } from "./job-manager.mjs";
 import { synthesize } from "./ai.mjs";
 import { LocalArchiveSearch, resolveLocalPdf } from "./local-search.mjs";
+import { archiveMissingRemote } from "./remote-archive.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const PUBLIC = resolve(process.env.PUBLIC_DIR || join(ROOT, "public"));
@@ -62,12 +63,15 @@ function normalizeResult(result, detail, pdf) {
     id: result.id ? Number(result.id) : detail?.id || null,
     title: detail?.title || result.caratula || result.fallo || "Fallo sin título",
     fallo: result.fallo,
-    expediente: result.expediente,
-    materia: result.materia,
-    fecha: result.fecha,
+    expediente: result.expediente || detail?.expediente,
+    materia: result.materia || detail?.materia,
+    fecha: result.fecha || detail?.fecha,
     source: pdf?.source || detail?.source || result.pdfUrl || result.source,
     pdfUrl: pdf?.source || detail?.pdfUrl || result.pdfUrl || null,
-    content: [detail?.text, pdf?.text].filter(Boolean).join("\n\n"),
+    // El contenido remoto no se entrega a la IA: primero debe quedar archivado
+    // y convertido a Markdown local. El detalle se conserva solo como dato de
+    // diagnóstico para la respuesta de la búsqueda.
+    content: "",
     detail,
     pdf: pdf ? { chars: pdf.chars, truncated: pdf.truncated } : null
   };
@@ -84,14 +88,61 @@ async function runRemoteQuery(question, input, filters) {
   const documents = [];
   for (const result of selected) {
     let detail = null;
-    let pdf = null;
     try { if (result.id) detail = await mcp.callTool("get_jurisprudencia_detail", { id: result.id }); } catch (error) { detail = { error: error.message }; }
-    if (result.pdfUrl || detail?.pdfUrl) {
-      try { pdf = await mcp.callTool("get_jurisprudencia_pdf_text", { pdfUrl: result.pdfUrl || detail.pdfUrl, maxChars: Number(process.env.MAX_PDF_CHARS || 18_000) }); } catch (error) { pdf = { error: error.message }; }
-    }
-    documents.push(normalizeResult(result, detail, pdf));
+    documents.push(normalizeResult(result, detail, null));
   }
   return { search, documents };
+}
+
+function remoteMetadata(document) {
+  return {
+    id: document.id,
+    caratula: document.title,
+    fallo: document.fallo,
+    expediente: document.expediente,
+    materia: document.materia || "Sin materia",
+    fecha: document.fecha,
+    source: document.source || document.pdfUrl,
+    pdfUrl: document.pdfUrl
+  };
+}
+
+async function localizeRemoteDocuments(remoteDocuments) {
+  const localized = [];
+  const stats = { downloaded: 0, cached: 0, skipped: 0, errors: [], createdMarkdown: 0 };
+  for (const remote of remoteDocuments) {
+    const found = await localSearch.findByIdentity({ id: remote.id, source: remote.source || remote.pdfUrl });
+    if (found) {
+      const materialized = await localSearch.materialize(found);
+      stats.cached += 1;
+      stats.createdMarkdown += materialized.createdMarkdown;
+      localized.push({ ...materialized.result, remote: true, cached: true });
+      continue;
+    }
+    if (!remote.pdfUrl) {
+      stats.skipped += 1;
+      localized.push(remote);
+      continue;
+    }
+    try {
+      const payload = await mcp.callTool("download_jurisprudencia_pdf", { pdfUrl: remote.pdfUrl });
+      if (!payload?.base64) throw new Error("El MCP no devolvió bytes PDF");
+      const saved = await archiveMissingRemote({
+        root: DATA_DIR,
+        writeRoot: process.env.DATA_WRITE_DIR || DATA_DIR,
+        metadata: remoteMetadata(remote),
+        pdfBytes: Buffer.from(payload.base64, "base64")
+      });
+      const materialized = await localSearch.materialize(saved.document || { ...remoteMetadata(remote), path: saved.path });
+      stats[saved.status === "cached" ? "cached" : "downloaded"] += 1;
+      stats.createdMarkdown += materialized.createdMarkdown;
+      localized.push({ ...materialized.result, remote: true, cached: saved.status === "cached" });
+    } catch (error) {
+      stats.errors.push({ id: remote.id, message: error.message });
+      localized.push({ ...remote, downloadError: error.message });
+    }
+  }
+  return { documents: localized, stats };
 }
 
 function resultKey(result) {
@@ -136,12 +187,15 @@ async function runQuery(input) {
   if (input.includeRemote === true) {
     try {
       const fetched = await runRemoteQuery(question, input, filters);
-      const results = combineResults(local.search.results, fetched.search.results || []);
+      const synchronized = await localizeRemoteDocuments(fetched.documents);
+      const localizedByKey = new Map(synchronized.documents.map((document) => [resultKey(document), document]));
+      const remoteResults = (fetched.search.results || []).map((result) => localizedByKey.get(resultKey(result)) || result);
+      const results = combineResults(local.search.results, remoteResults);
       const localKeys = new Set(local.documents.map(resultKey));
-      const remoteOnlyDocuments = fetched.documents.filter((document) => !localKeys.has(resultKey(document)));
+      const remoteOnlyDocuments = synchronized.documents.filter((document) => !localKeys.has(resultKey(document)));
       search = { ...local.search, source: "local-archive+mcp", total: results.length, results };
       documents = [...local.documents, ...remoteOnlyDocuments];
-      remote = { requested: true, enabled: true, total: fetched.search.total || fetched.search.results?.length || 0, returned: fetched.search.results?.length || 0 };
+      remote = { requested: true, enabled: true, total: fetched.search.total || fetched.search.results?.length || 0, returned: fetched.search.results?.length || 0, ...synchronized.stats };
     } catch (error) {
       remoteWarning = "La ampliación remota no estuvo disponible: " + error.message;
       remote = { requested: true, enabled: false, total: 0, error: error.message };
@@ -155,7 +209,7 @@ async function runQuery(input) {
     nonDestructive: true,
     sourceReadOnly: true,
     derivedMarkdownOnly: true,
-    derivedMarkdownCreated: local.createdMarkdown,
+    derivedMarkdownCreated: local.createdMarkdown + (remote.createdMarkdown || 0),
     sources: {
       local: { enabled: true, indexed: local.indexed, periodCandidates: local.periodCandidates, scannedPdfs: local.scannedPdfs, createdMarkdown: local.createdMarkdown, matchStrategy: local.matchStrategy, updatedAt: local.updatedAt },
       remote

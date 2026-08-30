@@ -1,7 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const markdown = (value) => escapeHtml(value).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>");
-const safeUrl = (value) => /^https?:\/\//i.test(String(value || "")) ? escapeHtml(value) : "";
+const safeUrl = (value) => /^(?:https?:\/\/|\/api\/local\/file\?path=)/i.test(String(value || "")) ? escapeHtml(value) : "";
 
 $("form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -35,7 +35,7 @@ $("form").addEventListener("submit", async (event) => {
     const remoteUsed = data.queryMode === "local+remote" && remoteInfo?.enabled;
     $("provider-badge").textContent = remoteUsed ? "ARCHIVO LOCAL + MCP + LLM" : "ARCHIVO LOCAL + LLM";
     $("result-source").textContent = remoteUsed ? "Archivo local y portal oficial" : "Desde el archivo local";
-    const remoteText = remoteInfo?.requested ? " · MCP: " + (remoteInfo.enabled ? (remoteInfo.returned || remoteInfo.total || 0) + " resultados" : "no disponible") : "";
+    const remoteText = remoteInfo?.requested ? " · MCP: " + (remoteInfo.enabled ? (remoteInfo.returned || remoteInfo.total || 0) + " resultados · " + (remoteInfo.downloaded || 0) + " PDFs nuevos · " + (remoteInfo.cached || 0) + " ya cacheados" : "no disponible") : "";
     $("meta").textContent = (data.search?.total ?? 0) + " resultados mostrados · " + (data.documents?.length ?? 0) + " documentos analizados · " + (localInfo?.indexed ?? 0) + " indexados localmente" + remoteText;
     $("answer").hidden = false;
     $("resultList").innerHTML = (data.search?.results || []).map((item) => {
@@ -46,7 +46,8 @@ $("form").addEventListener("submit", async (event) => {
     }).join("") || "<p class=\"muted\">No hubo resultados.</p>";
     $("results").hidden = false;
     $("raw").textContent = JSON.stringify(data, null, 2);
-    $("status").textContent = (data.nonDestructive ? "✓ Modo no destructivo · " : "") + "Consulta completada: " + new Date(data.generatedAt || Date.now()).toLocaleString("es-AR") + ((localInfo?.createdMarkdown || 0) ? " · .md nuevos: " + localInfo.createdMarkdown : "") + (data.warning ? " · " + data.warning : "");
+    const markdownCreated = data.derivedMarkdownCreated || localInfo?.createdMarkdown || 0;
+    $("status").textContent = (data.nonDestructive ? "✓ Modo no destructivo · " : "") + "Consulta completada: " + new Date(data.generatedAt || Date.now()).toLocaleString("es-AR") + (markdownCreated ? " · .md nuevos: " + markdownCreated : "") + (data.warning ? " · " + data.warning : "");
   } catch (error) {
     $("error").textContent = error.message;
     $("error").hidden = false;

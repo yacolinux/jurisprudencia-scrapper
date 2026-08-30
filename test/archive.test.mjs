@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { ArchiveStore, archiveRelativePath, parseCourtDate } from "../src/archive-store.mjs";
 import { BatchCollector, validateBatchInput } from "../src/collector.mjs";
 import { LocalArchiveSearch, resolveLocalPdf } from "../src/local-search.mjs";
+import { archiveMissingRemote } from "../src/remote-archive.mjs";
 
 test("interpreta fechas del portal y genera una ruta humana", () => {
   const date = parseCourtDate("25-08-2026");
@@ -69,6 +70,23 @@ test("la búsqueda local lee el manifest sin crearlo ni modificarlo", async () =
     assert.equal(result.indexed, 2);
     assert.throws(() => resolveLocalPdf(root, "../outside.pdf"), /no permitido/);
     assert.equal((await readFile(join(root, "manifest.json"), "utf8")).includes("Acción de cobertura"), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("la ampliación remota archiva solo faltantes sin tocar el PDF existente", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archivo-jurisprudencia-remoto-test-"));
+  try {
+    const metadata = { id: 789, materia: "Amparo", fecha: "25-08-2026", caratula: "Archivo remoto", source: "https://jurisprudencia.juscorrientes.gov.ar/ver-pdf/789" };
+    const first = await archiveMissingRemote({ root, metadata, pdfBytes: Buffer.from("%PDF-original") });
+    const second = await archiveMissingRemote({ root, metadata, pdfBytes: Buffer.from("%PDF-reemplazo") });
+    assert.equal(first.status, "downloaded");
+    assert.equal(second.status, "cached");
+    assert.equal((await readFile(join(root, first.document.path))).toString(), "%PDF-original");
+    assert.equal((await readFile(join(root, ".query-archive.json"), "utf8")).includes("Archivo remoto"), true);
+    const local = new LocalArchiveSearch(root, { pdfScanLimit: 0 });
+    assert.equal((await local.findByIdentity({ id: 789 }))?.path, first.document.path);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

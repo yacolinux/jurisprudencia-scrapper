@@ -18,7 +18,8 @@
       <dl>
         <dt>search_jurisprudencia</dt><dd>Busca en el portal remoto con texto, materia, año, tipo y paginación.</dd>
         <dt>get_jurisprudencia_detail</dt><dd>Recupera el detalle completo de un resultado por su identificador.</dd>
-        <dt>get_jurisprudencia_pdf_text</dt><dd>Descarga un PDF y extrae su texto con un límite configurable.</dd>
+        <dt>get_jurisprudencia_pdf_text</dt><dd>Herramienta de compatibilidad para descargar un PDF y extraer su texto con un límite configurable.</dd>
+        <dt>download_jurisprudencia_pdf</dt><dd>Devuelve los bytes del PDF en base64 para que la app de consulta archive únicamente un faltante local.</dd>
         <dt>diagnose_jurisprudencia_access</dt><dd>Comprueba conectividad, challenge de Cloudflare, navegador y API.</dd>
       </dl>
     </section>
@@ -30,7 +31,7 @@
       Cliente HTTP o navegador Chromium
           ↓
       Portal remoto de jurisprudencia</pre>
-      <p>La app de consulta trabaja primero con el archivo local en modo no destructivo. Cuando se activa la opción remota, usa este MCP para agregar resultados, detalles y texto PDF del portal; luego el modelo configurado en <code>OPENCODE_MODEL</code> prepara la respuesta.</p>
+      <p>La app de consulta trabaja primero con el archivo local en modo no destructivo. Cuando se activa la opción remota, usa este MCP para localizar resultados y detalles; compara cada uno con la caché por ID o fuente y solicita el PDF solamente si falta. El PDF se guarda ordenadamente en <code>data/</code>, se crea un Markdown lateral sin alterar el original y el modelo configurado en <code>OPENCODE_MODEL</code> lee únicamente ese Markdown.</p>
     </section>
     <section class="panel"><h2>Cloudflare y acceso</h2>
       <p>El acceso HTTP directo puede recibir un challenge. Por eso el cliente admite Chromium/Xvfb y también reutilizar un Chrome externo mediante <code>JURIS_CDP_URL=http://127.0.0.1:9222</code>. Si el challenge no puede resolverse automáticamente, la ejecución queda informada para reintento manual.</p>

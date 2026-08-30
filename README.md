@@ -86,7 +86,7 @@ La app de consulta mantiene el endpoint compatible POST /api/query en el puerto 
 
 La consulta trabaja por defecto en modo local y no destructivo respecto de los documentos originales. Lee primero data/manifest.json y los metadatos laterales .pdf.json, filtrando por año, mes y materia/categoría. Si un PDF seleccionado todavía no tiene su .md, genera un Markdown derivado una sola vez mediante pdftotext; nunca modifica el PDF ni el JSON. Luego la IA recibe exclusivamente los .md. El servicio monta la fuente archivada como solo lectura y dispone de una ruta separada para agregar únicamente esos derivados Markdown.
 
-El checkbox Ampliar con consulta remota (MCP) agrega la búsqueda oficial, el detalle y el texto PDF remoto a los resultados locales. Si el sitio remoto o Cloudflare no están disponibles, la aplicación conserva la respuesta local y devuelve la advertencia, sin convertir la consulta local en un fallo.
+El checkbox Ampliar con consulta remota (MCP) agrega la búsqueda oficial y compara cada resultado por ID/fuente con el repositorio local. Solo para los faltantes solicita el PDF al MCP, lo guarda en la misma nomenclatura humana `año/mes/semana/fecha/materia/archivo.pdf` y crea su `.md` derivado. Nunca reemplaza un PDF, un JSON lateral ni `manifest.json`; el índice adicional `.query-archive.json` se usa para registrar capturas nuevas sin interferir con la aplicación de descarga. La IA recibe exclusivamente los Markdown locales. Si el sitio remoto o Cloudflare no están disponibles, la aplicación conserva la respuesta local y devuelve la advertencia, sin convertir la consulta local en un fallo.
 
 La respuesta de la API incluye queryMode, nonDestructive, sourceReadOnly, derivedMarkdownOnly, derivedMarkdownCreated y sources.local/sources.remote para distinguir el origen de cada material. LOCAL_PDF_SCAN_LIMIT limita el escaneo de PDFs cuando no hay coincidencias en los metadatos.
 
@@ -111,7 +111,7 @@ El archivo no interpreta ni resume el contenido jurídico. Los PDFs se guardan p
 
 ## MCP
 
-El MCP se implementa en src/server.mjs y ofrece search_jurisprudencia, get_jurisprudencia_detail, get_jurisprudencia_pdf_text y diagnose_jurisprudencia_access. La página http://localhost:3002/mcp.html resume el contrato y el flujo. El modelo usado por la app de consulta se preconfigura en Compose mediante OPENCODE_MODEL, por defecto opencode/nemotron-3.5-lightning-free.
+El MCP se implementa en src/server.mjs y ofrece search_jurisprudencia, get_jurisprudencia_detail, get_jurisprudencia_pdf_text, download_jurisprudencia_pdf y diagnose_jurisprudencia_access. La herramienta binaria se usa únicamente desde el checkbox remoto, después de verificar que el ID/fuente no esté archivado localmente. La página http://localhost:3002/mcp.html resume el contrato y el flujo. El modelo usado por la app de consulta se preconfigura en Compose mediante OPENCODE_MODEL, por defecto opencode/nemotron-3.5-lightning-free.
 
 ## Publicación
 

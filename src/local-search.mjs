@@ -135,15 +135,69 @@ export class LocalArchiveSearch {
   }
 
   async readManifest() {
+    let manifest;
     try {
-      const manifest = JSON.parse(await readFile(this.manifestPath, "utf8"));
+      manifest = JSON.parse(await readFile(this.manifestPath, "utf8"));
       if (!Array.isArray(manifest.documents)) throw Object.assign(new Error("manifest sin documentos"), { code: "LOCAL_INDEX_INVALID" });
-      return manifest;
     } catch (error) {
-      if (error.code === "ENOENT") return { version: 1, updatedAt: null, documents: [] };
+      if (error.code === "ENOENT") manifest = { version: 1, updatedAt: null, documents: [] };
       if (error.code === "LOCAL_INDEX_INVALID") throw error;
-      throw Object.assign(new Error("No se pudo leer el índice local: " + error.message), { code: "LOCAL_INDEX_INVALID" });
+      if (error.code !== "ENOENT" && error.code !== "LOCAL_INDEX_INVALID") throw Object.assign(new Error("No se pudo leer el índice local: " + error.message), { code: "LOCAL_INDEX_INVALID" });
     }
+    let extra = { version: 1, updatedAt: null, documents: [] };
+    try {
+      extra = JSON.parse(await readFile(join(this.root, ".query-archive.json"), "utf8"));
+      if (!Array.isArray(extra.documents)) extra.documents = [];
+    } catch (error) {
+      if (error.code !== "ENOENT") throw Object.assign(new Error("No se pudo leer el índice de capturas remotas: " + error.message), { code: "LOCAL_INDEX_INVALID" });
+    }
+    const documents = [...manifest.documents];
+    for (const document of extra.documents) {
+      const existing = documents.findIndex((item) => (document.id && String(item.id) === String(document.id)) || (document.source && item.source === document.source) || item.path === document.path);
+      if (existing >= 0) documents[existing] = { ...documents[existing], ...document };
+      else documents.push(document);
+    }
+    return { ...manifest, documents, updatedAt: extra.updatedAt || manifest.updatedAt };
+  }
+
+  async findByIdentity({ id, source } = {}) {
+    const manifest = await this.readManifest();
+    for (const document of manifest.documents) {
+      if (!((id && String(document.id) === String(id)) || (source && document.source === source))) continue;
+      if (!document.path) continue;
+      try {
+        if (await fileExists(resolveLocalPdf(this.root, document.path))) return this.readSidecarMetadata(document);
+      } catch {}
+    }
+    return null;
+  }
+
+  async materialize(document) {
+    const enriched = await this.readSidecarMetadata(document);
+    const markdown = await this.ensureMarkdown(enriched);
+    let pdfAvailable = false;
+    if (enriched.path) {
+      try { pdfAvailable = await fileExists(resolveLocalPdf(this.root, enriched.path)); } catch {}
+    }
+    const result = {
+      id: enriched.id ? Number(enriched.id) : null,
+      title: enriched.caratula || enriched.fallo || ("Fallo " + (enriched.id || "")).trim(),
+      fallo: enriched.fallo,
+      expediente: enriched.expediente,
+      materia: enriched.materia,
+      fecha: enriched.fecha,
+      source: enriched.source || ("local:" + (enriched.path || "")),
+      pdfUrl: pdfAvailable && enriched.path ? "/api/local/file?path=" + encodeURIComponent(enriched.path) : null,
+      localPath: enriched.path || null,
+      metadataPath: enriched.metadataPath || null,
+      metadata: enriched,
+      markdownPath: markdown.path,
+      markdownCreated: markdown.created,
+      content: markdown.content,
+      pdf: { chars: markdown.content.length, truncated: markdown.content.length >= this.maxPdfChars },
+      local: true
+    };
+    return { result, createdMarkdown: markdown.created ? 1 : 0 };
   }
 
   async readSidecarMetadata(document) {
@@ -179,32 +233,12 @@ export class LocalArchiveSearch {
     const documents = [];
     let createdMarkdown = 0;
     for (const { document } of selected) {
-      const markdown = await this.ensureMarkdown(document);
-      if (markdown.created) createdMarkdown += 1;
-      const content = markdown.content;
-      let pdfAvailable = false;
-      if (document.path) {
-        try { pdfAvailable = await fileExists(resolveLocalPdf(this.root, document.path)); } catch {}
-      }
+      const materialized = await this.materialize(document);
+      createdMarkdown += materialized.createdMarkdown;
+      const { result } = materialized;
+      const content = result.content;
       if (!metadataMatched && terms.length && !terms.some((term) => normalize(content).includes(term))) continue;
-      documents.push({
-        id: document.id ? Number(document.id) : null,
-        title: document.caratula || document.fallo || ("Fallo " + (document.id || "")).trim(),
-        fallo: document.fallo,
-        expediente: document.expediente,
-        materia: document.materia,
-        fecha: document.fecha,
-        source: document.source || ("local:" + (document.path || "")),
-        pdfUrl: pdfAvailable && document.path ? "/api/local/file?path=" + encodeURIComponent(document.path) : null,
-        localPath: document.path || null,
-        metadataPath: document.metadataPath || null,
-        metadata: document,
-        markdownPath: markdown.path,
-        markdownCreated: markdown.created,
-        content,
-        pdf: { chars: content.length, truncated: content.length >= this.maxPdfChars },
-        local: true
-      });
+      documents.push(result);
     }
     const visibleDocuments = documents.slice(0, Math.min(Number(limit) || 10, 50));
     const results = visibleDocuments.map(({ content, pdf, ...result }) => ({ ...result, local: true, hasMarkdown: Boolean(content), pdfAvailable: Boolean(result.pdfUrl) }));

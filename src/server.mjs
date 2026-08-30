@@ -45,6 +45,17 @@ const tools = [
     }
   },
   {
+    name: "download_jurisprudencia_pdf",
+    description: "Descarga el PDF público y devuelve sus bytes en base64 para archivarlo localmente. Solo debe usarse después de comprobar que el fallo no existe en la caché local.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pdfUrl: { type: "string", description: "URL PDF del portal devuelta por la búsqueda o el detalle." }
+      },
+      required: ["pdfUrl"]
+    }
+  },
+  {
     name: "diagnose_jurisprudencia_access",
     description: "Comprueba el acceso HTTP directo y reporta si Cloudflare devuelve un desafío, sin intentar resolverlo.",
     inputSchema: { type: "object", properties: {} }
@@ -68,6 +79,10 @@ async function callTool(name, args) {
   if (name === "search_jurisprudencia") return result(await client.search(args || {}));
   if (name === "get_jurisprudencia_detail") return result(await client.detail(args?.id));
   if (name === "get_jurisprudencia_pdf_text") return result(await client.pdfText(args?.pdfUrl, args?.maxChars));
+  if (name === "download_jurisprudencia_pdf") {
+    const bytes = await client.downloadPdf(args?.pdfUrl);
+    return result({ base64: Buffer.from(bytes).toString("base64"), bytes: bytes.length, source: args?.pdfUrl });
+  }
   if (name === "diagnose_jurisprudencia_access") return result(await client.diagnose());
   throw new Error(`Herramienta desconocida: ${name}`);
 }
