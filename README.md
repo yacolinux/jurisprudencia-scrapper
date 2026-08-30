@@ -82,6 +82,8 @@ Abrir http://localhost:3002. El directorio data pertenece al proyecto que ejecut
 
 La app de consulta mantiene el endpoint compatible POST /api/query en el puerto 3001, con un cuerpo como { "question": "fallos sobre amparo", "searchText": "", "mode": "single", "includeRemote": false, "filters": {} }.
 
+Después de cada consulta, la sección Material recuperado incorpora una columna lateral de Fuentes leídas. Allí se muestra el nombre y la ruta relativa de cada archivo utilizado por la respuesta, con accesos directos a su Markdown, al JSON de metadatos y al PDF original cuando están disponibles. Los accesos locales son `/api/local/markdown?path=...`, `/api/local/metadata?path=...` y `/api/local/file?path=...`.
+
 ## Consulta local y ampliación remota
 
 La consulta trabaja por defecto en modo local y no destructivo respecto de los documentos originales. Lee primero data/manifest.json y los metadatos laterales .pdf.json, filtrando por año, mes y materia/categoría. Si un PDF seleccionado todavía no tiene su .md, genera un Markdown derivado una sola vez mediante pdftotext; nunca modifica el PDF ni el JSON. Luego la IA recibe exclusivamente los .md. El servicio monta la fuente archivada como solo lectura y dispone de una ruta separada para agregar únicamente esos derivados Markdown.
@@ -117,6 +119,8 @@ El MCP se implementa en src/server.mjs y ofrece search_jurisprudencia, get_juris
 
 Después de revisar los cambios:
 
-    git add .
-    git commit -m "feat: add portal and split apps by port"
+    git add README.md public-query portal src docker-compose.yml Dockerfile package.json test
+    git commit -m "describir el cambio"
     git push origin main
+
+El directorio local `data/` se mantiene fuera de los commits: contiene la caché de PDFs y Markdown generados en cada instalación.
