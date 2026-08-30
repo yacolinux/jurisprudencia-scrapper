@@ -5,3 +5,6 @@ __pycache__/
 # Ejemplos originales: contienen nombres, expedientes y URLs no censurados.
 # Las copias revisadas viven en screenshots/censurados/ y sí pueden publicarse.
 /screenshots/ej *.pdf
+
+# PDF agregado localmente con datos identificatorios todavía no censurados.
+/EJEMPLO-DE-USO.pdf
