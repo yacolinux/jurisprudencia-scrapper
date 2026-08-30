@@ -1,6 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const markdown = (value) => escapeHtml(value).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>");
+const safeUrl = (value) => /^https?:\/\//i.test(String(value || "")) ? escapeHtml(value) : "";
 
 $("form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -27,9 +28,12 @@ $("form").addEventListener("submit", async (event) => {
     $("answerText").innerHTML = markdown(data.answer || "No se generó una respuesta.");
     $("meta").textContent = (data.search?.total ?? 0) + " resultados encontrados · " + (data.documents?.length ?? 0) + " documentos analizados";
     $("answer").hidden = false;
-    $("resultList").innerHTML = (data.search?.results || []).map((item) =>
-      "<article class=\"result\"><h3>" + escapeHtml(item.caratula || item.fallo || "Resultado") + "</h3><div>" + escapeHtml(item.materia || "") + " " + escapeHtml(item.fecha || "") + "</div><small>" + escapeHtml(item.expediente || "") + "</small></article>"
-    ).join("") || "<p>No hubo resultados.</p>";
+    $("resultList").innerHTML = (data.search?.results || []).map((item) => {
+      const document = (data.documents || []).find((candidate) => String(candidate.id) === String(item.id));
+      const pdfUrl = safeUrl(item.pdfUrl || item.source || document?.pdfUrl || document?.source);
+      const pdf = pdfUrl ? "<a class=\"pdf\" href=\"" + pdfUrl + "\" target=\"_blank\" rel=\"noreferrer\">PDF disponible ↗</a>" : "<span>PDF no recuperado</span>";
+      return "<article class=\"result\"><h3>" + escapeHtml(item.caratula || item.fallo || "Resultado") + "</h3><p>" + escapeHtml(item.fallo || "Fallo recuperado del portal oficial") + "</p><div class=\"result-meta\"><span>" + escapeHtml(item.materia || "Materia no indicada") + "</span><span>" + escapeHtml(item.fecha || "Fecha no indicada") + "</span><span>" + escapeHtml(item.expediente || "") + "</span>" + pdf + "</div></article>";
+    }).join("") || "<p class=\"muted\">No hubo resultados.</p>";
     $("results").hidden = false;
     $("raw").textContent = JSON.stringify(data, null, 2);
     $("status").textContent = "Consulta completada: " + new Date(data.generatedAt || Date.now()).toLocaleString("es-AR");

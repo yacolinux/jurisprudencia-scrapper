@@ -1,48 +1,63 @@
 <!doctype html>
 <html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Consulta de jurisprudencia</title>
-  <style>
-    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #26384b; background: #f5f8fb; }
-    body { max-width: 1100px; margin: 0 auto; padding: 24px; }
-    nav { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; }
-    nav a { color: #168eae; font-weight: 700; text-decoration: none; }
-    .card { background: white; border: 1px solid #d8e1e8; border-radius: 12px; padding: 22px; margin-bottom: 18px; box-shadow: 0 3px 12px #18364c12; }
-    h1 { margin-top: 0; color: #1b527c; } label { display: block; font-weight: 700; margin: 14px 0 6px; }
-    textarea, input, select { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid #bdccd7; border-radius: 8px; font: inherit; }
-    textarea { min-height: 110px; resize: vertical; } .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    button { margin-top: 18px; background: #4e7295; color: white; border: 0; border-radius: 8px; padding: 12px 22px; font-size: 1rem; cursor: pointer; }
-    button:disabled { opacity: .6; cursor: wait; } .muted { color: #6e8091; } .error { color: #a94132; background: #fff0ed; padding: 12px; border-radius: 8px; }
-    .result { border-top: 1px solid #e1e8ee; padding: 14px 0; } .result h3 { margin: 0 0 8px; }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f7f9; padding: 14px; border-radius: 8px; }
-    @media (max-width: 680px) { body { padding: 14px; } .row { grid-template-columns: 1fr; } }
-  </style>
-</head>
-<body>
-  <nav><a href="http://localhost:3002">Portal principal</a><a href="http://localhost:3000">Descarga / actualización</a></nav>
-  <main class="card">
-    <h1>Consulta de jurisprudencia</h1>
-    <p class="muted">Búsqueda asistida sobre el portal remoto, con detalle y texto de los PDFs cuando están disponibles.</p>
-    <form id="form">
-      <label for="question">Consulta</label>
-      <textarea id="question" required minlength="5" placeholder="Ej.: fallos sobre amparo y cobertura de salud"></textarea>
-      <div class="row">
-        <div><label for="searchText">Texto exacto para el sitio (opcional)</label><input id="searchText" placeholder="Términos de búsqueda"></div>
-        <div><label for="materia">Materia (opcional)</label><input id="materia" placeholder="Ej.: Amparo"></div>
-      </div>
-      <label>Modo</label>
-      <div><label><input type="radio" name="mode" value="single" checked> Respuesta breve</label>
-      <label><input type="radio" name="mode" value="report"> Informe</label></div>
-      <button id="submit">Buscar</button>
-    </form>
-  </main>
-  <section id="status" class="muted"></section>
-  <section id="error" class="error" hidden></section>
-  <section id="answer" class="card" hidden><h2>Respuesta</h2><div id="answerText"></div><p class="muted" id="meta"></p></section>
-  <section id="results" class="card" hidden><h2>Resultados recuperados</h2><div id="resultList"></div></section>
-  <details class="card"><summary>Respuesta técnica</summary><pre id="raw"></pre></details>
-  <script type="module" src="/app.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Consulta inteligente · STJ Corrientes</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand-mark">Q</div>
+        <div><p class="eyebrow">CONSULTA INTELIGENTE · STJ CORRIENTES</p><h1>Jurisprudencia asistida</h1></div>
+        <div class="top-actions"><span class="online"><i></i> MCP DISPONIBLE</span><a class="quiet" href="http://localhost:3002">Portal principal</a><a class="quiet" href="http://localhost:3000">Archivo local</a></div>
+      </header>
+
+      <section class="hero">
+        <div><p class="kicker">BÚSQUEDA + LECTURA + SÍNTESIS</p><h2>Preguntá por un fallo.<br><em>Entendé el contexto.</em></h2><p class="lede">La consulta combina el buscador oficial, el detalle de cada resultado y el texto de sus PDFs. El modelo LLM configurado transforma ese material en una respuesta clara y trazable.</p></div>
+        <div class="hero-note"><span>FLUJO DE IA</span><strong>Buscar en el portal<br>Leer detalle y PDF<br>Sintetizar la respuesta</strong></div>
+      </section>
+
+      <section class="workspace">
+        <form id="form" class="card query-card">
+          <div class="card-heading"><div><p class="eyebrow">NUEVA CONSULTA</p><h3>¿Qué querés investigar?</h3></div><span class="pill ai-pill"><b>✦</b> IA ASISTIDA</span></div>
+          <label for="question">Pregunta en lenguaje natural</label>
+          <textarea id="question" required minlength="5" placeholder="Ej.: ¿Qué criterios usa el STJ en fallos de amparo sobre cobertura de salud?"></textarea>
+          <div class="field-grid">
+            <label for="searchText">Términos para el buscador <span>opcional</span><input id="searchText" placeholder="Ej.: amparo cobertura salud"></label>
+            <label for="materia">Materia <span>opcional</span><input id="materia" placeholder="Ej.: Amparo"></label>
+          </div>
+          <fieldset><legend>Tipo de respuesta</legend><div class="mode-grid"><label class="mode-option"><input type="radio" name="mode" value="single" checked><span><strong>Respuesta breve</strong><small>Una síntesis directa para orientarte.</small></span></label><label class="mode-option"><input type="radio" name="mode" value="report"><span><strong>Informe comparativo</strong><small>Más contexto y documentos recuperados.</small></span></label></div></fieldset>
+          <div class="form-footer"><p><strong>El MCP hace el trabajo pesado.</strong><br>Consulta · detalle · texto PDF · síntesis LLM</p><button class="primary" id="submit" type="submit">Consultar con IA <span>↗</span></button></div>
+        </form>
+
+        <aside class="card method-card">
+          <p class="eyebrow">CÓMO RESPONDE</p>
+          <div class="method-flow"><div><b>01</b><strong>Busca</strong><span>Filtros nativos<br>del portal remoto</span></div><div><b>02</b><strong>Lee</strong><span>Detalle y PDF<br>de cada fallo</span></div><div><b>03</b><strong>Explica</strong><span>Respuesta con<br>modelo LLM</span></div></div>
+          <div class="tech-note"><strong>Modelo</strong><span>OPENCODE_MODEL<br>configurado en Compose</span></div>
+          <div class="tech-note"><strong>Fuente</strong><span>Resultados oficiales<br>y PDF original</span></div>
+          <a class="doc-link" href="http://localhost:3002/mcp.html">Conocer el MCP construido →</a>
+        </aside>
+      </section>
+
+      <section id="status" class="status-line"></section>
+      <section id="error" class="card error" hidden></section>
+
+      <section id="answer" class="card answer-card" hidden>
+        <div class="section-heading"><div><p class="eyebrow">RESPUESTA GENERADA</p><h2>Lectura asistida del material</h2></div><span class="pill">MCP + LLM</span></div>
+        <div id="answerText" class="answer-text"></div>
+        <div class="answer-meta"><span id="meta"></span><span>Verificá siempre el fallo original.</span></div>
+      </section>
+
+      <section id="results" class="results-section" hidden>
+        <div class="section-heading"><div><p class="eyebrow">MATERIAL RECUPERADO</p><h2>Resultados que sustentan la respuesta</h2></div><span class="muted">Desde el portal oficial</span></div>
+        <div id="resultList" class="result-list"></div>
+      </section>
+
+      <details class="technical"><summary>Ver respuesta técnica del MCP</summary><pre id="raw"></pre></details>
+      <footer><span>consulta-jurisprudencia / v0.3</span><span>La IA orienta; el documento original es la fuente.</span></footer>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
 </html>
