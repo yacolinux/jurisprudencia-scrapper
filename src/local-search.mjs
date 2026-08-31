@@ -4,7 +4,8 @@ import { spawn } from "node:child_process";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { parseCourtDate } from "./archive-store.mjs";
 
-const STOPWORDS = new Set("qué que sobre para del las los una uno con desde entre necesito quiero buscá busca buscar analizar explicá explicar informe reporte consulta jurisprudencia fallo fallos relevante podrían caso instituto poder judicial corrientes".split(" "));
+const STOPWORDS = new Set("qué que sobre para del las los una uno con desde entre necesito quiero buscá busca buscar analizar explicá explicar informe reporte consulta jurisprudencia fallo fallos relevante podrían caso instituto poder judicial corrientes en documentos documento aparece aparecen menciona mencionan figura figuran contiene contienen apellido nombre".split(" "));
+const LOOKUP_STOPWORDS = new Set("el la los las un una de del en que qué aparece aparecen documento documentos fallo fallos sentencia sentencias apellido nombre donde dónde quiero saber puede pueden podría podrían".split(" "));
 
 function normalize(value) {
   return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
@@ -12,6 +13,55 @@ function normalize(value) {
 
 function termsFrom(value) {
   return normalize(value).split(/[^a-z0-9]+/).filter((term) => term.length > 2 && !STOPWORDS.has(term));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function exactTermPattern(term) {
+  const words = normalize(term).trim().split(/[^a-z0-9]+/).filter(Boolean);
+  if (!words.length) return null;
+  return new RegExp(`(?:^|[^a-z0-9])${words.map(escapeRegExp).join("[^a-z0-9]+")}(?=$|[^a-z0-9])`, "i");
+}
+
+function containsExactTerm(value, term) {
+  return exactTermPattern(term)?.test(normalize(value)) === true;
+}
+
+function quotedTerm(value) {
+  const matches = [...String(value ?? "").matchAll(/["“”']([^"“”']+)["“”']/g)];
+  return matches.at(-1)?.[1]?.trim() || null;
+}
+
+export function detectDocumentLookup(question, searchText = "") {
+  const rawQuestion = String(question ?? "").trim();
+  const normalizedQuestion = normalize(rawQuestion);
+  const hasIntent = /(?:en que|en cuales|que documentos|cuales documentos|donde)\b.*\b(?:aparece|aparecen|menciona|mencionan|figura|figuran|contiene|contienen|nombra|nombran)\b/.test(normalizedQuestion);
+  if (!hasIntent) return null;
+
+  const rawTerm = String(searchText ?? "").trim() || quotedTerm(rawQuestion) || rawQuestion.match(/(?:apellido|nombre|termino|término|texto)\s+(?:de\s+)?(.+?)(?:[?.!]|$)/i)?.[1]?.trim() || null;
+  if (!rawTerm) return null;
+  const terms = normalize(rawTerm).split(/[^a-z0-9]+/).filter((term) => term.length > 1 && !LOOKUP_STOPWORDS.has(term));
+  if (!terms.length) return null;
+  return { term: terms.join(" "), displayTerm: rawTerm };
+}
+
+function matchSnippets(content, term, maxSnippets = 3) {
+  const lines = String(content ?? "").split(/\r?\n/);
+  const snippets = [];
+  for (let index = 0; index < lines.length && snippets.length < maxSnippets; index += 1) {
+    if (!containsExactTerm(lines[index], term)) continue;
+    const snippet = lines.slice(Math.max(0, index - 1), Math.min(lines.length, index + 2)).join("\n").trim();
+    if (snippet && !snippets.includes(snippet)) snippets.push(truncateUtf8(snippet, 900));
+  }
+  if (!snippets.length && containsExactTerm(content, term)) {
+    const normalizedContent = normalize(content);
+    const position = exactTermPattern(term)?.exec(normalizedContent)?.index || 0;
+    const start = Math.max(0, position - 350);
+    snippets.push(truncateUtf8(String(content).slice(start, start + 900).trim(), 900));
+  }
+  return snippets;
 }
 
 function documentText(document) {
@@ -277,10 +327,72 @@ export class LocalArchiveSearch {
     }
   }
 
+  async searchDocumentLookup({ lookup, indexedCandidates, periodCandidates, updatedAt, filters }) {
+    const documents = [];
+    const contextDocuments = [];
+    const candidateDocuments = [];
+    let createdMarkdown = 0;
+    let unreadableDocuments = 0;
+
+    for (const document of periodCandidates) {
+      const materialized = await this.materialize(document);
+      createdMarkdown += materialized.createdMarkdown;
+      const result = materialized.result;
+      const metadataMatch = containsExactTerm(documentText(result), lookup.term);
+      const contentMatch = containsExactTerm(result.content, lookup.term);
+      if (!metadataMatch && !contentMatch) {
+        if (!result.content?.trim() && !metadataMatch) unreadableDocuments += 1;
+        continue;
+      }
+      const snippets = contentMatch ? matchSnippets(result.content, lookup.term) : [];
+      const compactContent = snippets.join("\n\n");
+      const compactResult = {
+        ...result,
+        content: compactContent,
+        lookupMatch: { term: lookup.term, metadata: metadataMatch, content: contentMatch, snippets },
+        pdf: { ...result.pdf, chars: compactContent.length, truncated: compactContent.length < result.content.length }
+      };
+      const reviewed = reviewDocument(compactResult);
+      candidateDocuments.push(reviewed);
+      documents.push(compactResult);
+      contextDocuments.push(contextDocument(compactResult, compactContent));
+    }
+
+    const sentIds = new Set(documents.map((document) => String(document.id || document.localPath || document.source)));
+    const results = candidateDocuments.map((candidate) => ({
+      ...candidate,
+      local: true,
+      hasMarkdown: Boolean(documents.find((document) => String(document.id || document.localPath || document.source) === String(candidate.id || candidate.localPath || candidate.source))?.lookupMatch?.content),
+      pdfAvailable: Boolean(candidate.localPath),
+      contextIncluded: sentIds.has(String(candidate.id || candidate.localPath || candidate.source)),
+      contextOmitted: false,
+      lookupMatch: true
+    }));
+    return {
+      search: { source: "local-archive", strategy: "document-lookup", lookup: { ...lookup, filters: { year: filters.year || filters.anio || null, month: filters.month || filters.mes || null, materia: filters.materia || filters.materias?.[0] || filters.categoria || filters.categorias?.[0] || null } }, total: results.length, page: 1, totalPages: 1, results },
+      documents,
+      indexed: indexedCandidates.length,
+      periodCandidates: periodCandidates.length,
+      scannedPdfs: periodCandidates.length,
+      createdMarkdown,
+      contextBytes: contextBytes(contextDocuments),
+      contextLimitBytes: this.maxContextBytes,
+      contextAllDocuments: true,
+      contextCandidates: candidateDocuments,
+      contextSent: documents.map((document) => reviewDocument(document)),
+      contextOmitted: [],
+      omittedByContext: 0,
+      unreadableDocuments,
+      updatedAt,
+      matchStrategy: "document-lookup",
+      lookup: { ...lookup, filters: { year: filters.year || filters.anio || null, month: filters.month || filters.mes || null, materia: filters.materia || filters.materias?.[0] || filters.categoria || filters.categorias?.[0] || null } }
+    };
+  }
+
   async search({ question = "", searchText = "", filters = {}, allDocuments = false } = {}) {
     const manifest = await this.readManifest();
     const terms = termsFrom(searchText || question);
-    const requestedMatter = termsFrom(filters.materia || filters.materias?.[0] || "");
+    const requestedMatter = termsFrom(filters.materia || filters.materias?.[0] || filters.categoria || filters.categorias?.[0] || "");
     const requestedYear = Number(filters.anio || filters.year || 0);
     const requestedMonth = Number(filters.mes || filters.month || 0);
     const indexedCandidates = await Promise.all(manifest.documents.map((document) => this.readSidecarMetadata(document)));
@@ -289,6 +401,8 @@ export class LocalArchiveSearch {
       const matterMatch = !requestedMatter.length || requestedMatter.every((term) => normalize(document.materia).includes(term));
       return (!requestedYear || date?.year === requestedYear) && (!requestedMonth || date?.month === requestedMonth) && matterMatch;
     });
+    const lookup = detectDocumentLookup(question, searchText);
+    if (lookup) return this.searchDocumentLookup({ lookup, indexedCandidates, periodCandidates, updatedAt: manifest.updatedAt, filters });
     const matchingCandidates = periodCandidates
       .map((document, index) => ({ document, score: scoreDocument(document, terms), index }))
       .filter(({ score }) => !terms.length || score > 0)

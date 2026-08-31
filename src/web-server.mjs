@@ -219,13 +219,14 @@ async function runQuery(input) {
   }
   const synthesis = await synthesize({ question, mode, search, documents, model: input.model, contextLimitBytes: retryAllDocuments ? null : local.contextLimitBytes });
   const sentCount = Number.isInteger(synthesis.contextDocuments) ? synthesis.contextDocuments : local.documents.length;
+  const aiOmitted = (synthesis.contextOmittedDocuments || []).map((document) => ({ ...document, reason: "exceso del presupuesto compacto de contexto" }));
   const contextReview = {
     candidateCount: local.contextCandidates.length,
     sentCount,
-    omittedCount: local.contextOmitted.length,
+    omittedCount: local.contextOmitted.length + aiOmitted.length,
     candidates: local.contextCandidates,
     sent: local.contextSent.slice(0, sentCount),
-    omitted: local.contextOmitted,
+    omitted: [...local.contextOmitted, ...aiOmitted],
     allDocuments: retryAllDocuments,
     contextLimitBytes: local.contextLimitBytes
   };

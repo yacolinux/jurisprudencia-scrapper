@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { ArchiveStore, archiveRelativePath, parseCourtDate } from "../src/archive-store.mjs";
 import { BatchCollector, validateBatchInput } from "../src/collector.mjs";
-import { LocalArchiveSearch, resolveLocalPdf } from "../src/local-search.mjs";
+import { LocalArchiveSearch, detectDocumentLookup, resolveLocalPdf } from "../src/local-search.mjs";
 import { archiveMissingRemote } from "../src/remote-archive.mjs";
 import { normalizeExportPayload } from "../src/export.mjs";
 
@@ -122,6 +122,60 @@ test("la consulta local no limita la cantidad de documentos a tres", async () =>
     assert.equal(result.documents.length, 5);
     assert.equal(result.search.total, 5);
     assert.ok(result.contextBytes <= result.contextLimitBytes);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("detecta una búsqueda de documentos y respeta año, mes y categoría", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archivo-jurisprudencia-lookup-test-"));
+  try {
+    const documents = [
+      { id: 1, materia: "Civil y Comercial", fecha: "24-05-2024", caratula: "Fallo sobre daños", path: "2024/05-mayo/semana-21/24-05-2024/civil-y-comercial/fallo-1.pdf" },
+      { id: 2, materia: "Civil y Comercial", fecha: "24-05-2024", caratula: "Fallo sobre contratos", path: "2024/05-mayo/semana-21/24-05-2024/civil-y-comercial/fallo-2.pdf" },
+      { id: 3, materia: "Civil y Comercial", fecha: "24-06-2024", caratula: "Fernandez fuera del mes", path: "2024/06-junio/semana-26/24-06-2024/civil-y-comercial/fallo-3.pdf" }
+    ];
+    await writeFile(join(root, "manifest.json"), JSON.stringify({ version: 1, documents }));
+    for (const document of documents) {
+      const markdownPath = join(root, document.path.replace(/\.pdf$/i, ".md"));
+      await mkdir(dirname(markdownPath), { recursive: true });
+      await writeFile(markdownPath, document.id === 1 ? "Comparece el señor Fernández en estas actuaciones." : "El apellido informado es Garcia.");
+    }
+    assert.deepEqual(detectDocumentLookup("Quiero saber en qué documentos aparece el apellido \"Fernandez\""), { term: "fernandez", displayTerm: "Fernandez" });
+    const search = new LocalArchiveSearch(root);
+    const result = await search.search({ question: "Quiero saber en qué documentos aparece el apellido \"Fernandez\"", filters: { year: 2024, month: 5, categorias: ["Civil y Comercial"] } });
+    assert.equal(result.matchStrategy, "document-lookup");
+    assert.equal(result.periodCandidates, 2);
+    assert.deepEqual(result.search.results.map((item) => item.id), [1]);
+    assert.equal(result.documents[0].lookupMatch.content, true);
+    assert.match(result.documents[0].content, /Fernández/);
+    assert.equal(result.contextOmitted.length, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("la búsqueda documental materializa un PDF faltante y conserva el original", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archivo-jurisprudencia-lookup-pdf-test-"));
+  try {
+    const document = {
+      id: 2,
+      materia: "Laboral",
+      fecha: "22-05-2024",
+      caratula: "Fallo sin Markdown",
+      path: "2024/05-mayo/semana-21/22-05-2024/laboral/fallo.pdf"
+    };
+    await writeFile(join(root, "manifest.json"), JSON.stringify({ version: 1, documents: [document] }));
+    const pdfPath = join(root, document.path);
+    await mkdir(dirname(pdfPath), { recursive: true });
+    await writeFile(pdfPath, "%PDF-original");
+    const search = new LocalArchiveSearch(root, { extractText: async () => "El apellido Fernández aparece en el fallo." });
+    const result = await search.search({ question: "¿En qué documentos aparece el apellido Fernandez?", filters: { year: 2024, month: 5, materia: "Laboral" } });
+    assert.equal(result.createdMarkdown, 1);
+    assert.equal(result.search.total, 1);
+    assert.equal(result.documents[0].markdownCreated, true);
+    assert.match(result.documents[0].content, /Fernández/);
+    assert.equal(await readFile(pdfPath, "utf8"), "%PDF-original");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

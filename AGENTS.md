@@ -67,6 +67,8 @@ Las rutas deben validarse contra la raíz de datos antes de leerlas.
 
 Después de una consulta, la respuesta incluye `contextReview` con los candidatos encontrados, los documentos enviados y los omitidos por presupuesto de contexto. La interfaz muestra esos conteos en un frame previo a la respuesta, permite abrir y copiar cada listado y ofrece `retryAllDocuments: true` para repetir la consulta local sin el límite de 100 KiB. El reintento puede superar la ventana del modelo y debe informar el error si ocurre.
 
+Las consultas de pertenencia documental, como “en qué documentos aparece el apellido Fernandez”, usan `matchStrategy: "document-lookup"`: primero filtran por año, mes y materia/categoría, luego comparan el término exacto contra metadatos y Markdown, y materializan sobre la marcha los PDFs que todavía no tengan Markdown. La coincidencia la resuelve la aplicación localmente y de forma determinista; OpenCode no necesita herramientas de búsqueda ni decide qué documentos coinciden, sino que redacta a partir de un contexto compacto. La respuesta conserva el listado completo de coincidencias aunque OpenCode falle o el contexto de la IA sea insuficiente.
+
 Los errores de OpenCode no deben quedar mezclados únicamente con la respuesta generada. `synthesize()` devuelve `aiError` con código, título, mensaje y acción sugerida; reconoce especialmente timeout (`OPENCODE_TIMEOUT`) y exceso de contexto (`OPENCODE_CONTEXT_LIMIT`). Si existe texto parcial, se conserva como `partialAnswer` y la interfaz lo presenta como respuesta incompleta.
 
 ## Checkbox de ampliación remota

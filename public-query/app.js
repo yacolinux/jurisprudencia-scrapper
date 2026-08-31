@@ -142,7 +142,9 @@ function renderContextReview(data) {
   $("contextCandidateCount").textContent = String(review.candidateCount ?? candidates.length);
   $("contextSentCount").textContent = String(review.sentCount ?? sent.length);
   $("contextOmittedCount").textContent = String(review.omittedCount ?? omitted.length);
-  $("contextReviewSubtitle").textContent = review.allDocuments
+  $("contextReviewSubtitle").textContent = data.search?.strategy === "document-lookup"
+    ? "Búsqueda exacta local: la IA recibe un contexto compacto y el listado completo se conserva en los resultados."
+    : review.allDocuments
     ? "Se reintentó la consulta con todos los documentos que coincidieron con la búsqueda."
     : `El límite local de contexto es de ${Math.round((review.contextLimitBytes || 0) / 1024)} KiB; los documentos no enviados quedan identificados para que puedas reintentar.`;
   $("showCandidateDocuments").onclick = () => showDocumentList("Documentos encontrados", candidates);

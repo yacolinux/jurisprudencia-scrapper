@@ -46,6 +46,62 @@ function serializedContext(search, documents) {
   });
 }
 
+function compactLookupMetadata(document) {
+  const metadata = document.metadata || document;
+  return {
+    id: document.id || metadata.id || null,
+    title: String(document.title || metadata.caratula || metadata.fallo || "").slice(0, 260),
+    fallo: String(document.fallo || metadata.fallo || "").slice(0, 100),
+    expediente: String(document.expediente || metadata.expediente || "").slice(0, 120),
+    materia: String(document.materia || metadata.materia || "").slice(0, 100),
+    fecha: String(document.fecha || metadata.fecha || "").slice(0, 30),
+    source: String(document.source || metadata.source || "").slice(0, 220),
+    localPath: String(document.localPath || metadata.path || "").slice(0, 300),
+    markdownPath: String(document.markdownPath || "").slice(0, 300)
+  };
+}
+
+function serializedLookupContext(search, documents) {
+  return JSON.stringify({
+    search: { source: search?.source, strategy: search?.strategy, total: search?.total, lookup: search?.lookup },
+    documents
+  });
+}
+
+function fitLookupContext({ search, documents, maxBytes = DEFAULT_CONTEXT_BYTES }) {
+  const selected = [];
+  const omittedDocuments = [];
+  let omitted = 0;
+  for (const document of documents) {
+    const entry = {
+      metadata: compactLookupMetadata(document),
+      matches: (document.lookupMatch?.snippets || []).slice(0, 2).map((snippet) => String(snippet).slice(0, 500))
+    };
+    if (byteLength(serializedLookupContext(search, [...selected, entry])) <= maxBytes) selected.push(entry);
+    else {
+      omitted += 1;
+      omittedDocuments.push(compactLookupMetadata(document));
+    }
+  }
+  return { selected, bytes: byteLength(serializedLookupContext(search, selected)), omitted, omittedDocuments };
+}
+
+function lookupDocumentList(documents, search) {
+  const term = search.lookup?.displayTerm || search.lookup?.term || "el término indicado";
+  const lines = [
+    "### Coincidencias verificadas por la aplicación",
+    `Término buscado: ${term}`,
+    `Se encontraron ${search.results?.length || 0} documento(s) dentro de los filtros seleccionados.`
+  ];
+  if (documents.length) {
+    lines.push("", "Documentos encontrados:");
+    for (const document of documents) {
+      lines.push(`- ${document.title || document.fallo || `Fallo ${document.id}`} — ${document.materia || "Materia no indicada"} — ${document.fecha || "Fecha no indicada"} — ${document.localPath || "ruta local no indicada"}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 function fitContext({ search, documents, maxBytes = DEFAULT_CONTEXT_BYTES }) {
   const selected = [];
   let omitted = 0;
@@ -240,6 +296,16 @@ export async function probeOpenCode(model = DEFAULT_MODEL) {
 }
 
 function localAnswer({ question, mode, documents, search }) {
+  if (search?.strategy === "document-lookup") {
+    const lines = [
+      mode === "report" ? "## Reporte de búsqueda documental" : "## Resultado de búsqueda documental",
+      "",
+      "La coincidencia fue verificada en los metadatos o en el Markdown local. Verificá siempre el fallo original.",
+      "",
+      lookupDocumentList(documents, search)
+    ];
+    return { answer: lines.join("\n"), provider: "local-fallback", model: null };
+  }
   const visible = documents.filter((document) => document.content?.trim());
   const lines = [
     mode === "report" ? "## Reporte preliminar" : "## Respuesta preliminar",
@@ -264,19 +330,25 @@ function localAnswer({ question, mode, documents, search }) {
 
 export async function synthesize({ question, mode, search, documents, model, contextLimitBytes = DEFAULT_CONTEXT_BYTES }) {
   const fallback = () => localAnswer({ question, mode, documents, search });
+  const isLookup = search?.strategy === "document-lookup";
   if (process.env.OPENCODE_ENABLED !== "1") {
     const error = classifyOpenCodeError(Object.assign(new Error("OpenCode está deshabilitado"), { code: "OPENCODE_DISABLED" }));
-    return { ...fallback(), aiError: error, warning: error.message, contextBytes: 0, contextLimitBytes, contextDocuments: 0, contextOmitted: documents.length };
+    return { ...fallback(), aiError: error, warning: error.message, contextBytes: 0, contextLimitBytes, contextDocuments: 0, contextOmitted: documents.length, ...(isLookup ? { contextOmittedDocuments: documents.map(compactLookupMetadata) } : {}) };
   }
 
-  const fitted = fitContext({ search, documents, maxBytes: contextLimitBytes == null ? Number.MAX_SAFE_INTEGER : contextLimitBytes });
-  const context = serializedContext(search, fitted.selected);
-  const prompt = `Sos un asistente de análisis jurídico para un prototipo. Respondé en español rioplatense, con lenguaje claro, preciso y prudente. La pregunta del usuario define la tarea: cumplila de forma completa y no la reemplaces por una mera lista de documentos ni por un resumen técnico del proceso. Usá solamente el contexto JSON entregado. No inventes hechos, normas ni precedentes; distinguí expresamente entre lo que surge del texto y cualquier inferencia. No des asesoramiento jurídico definitivo y recordá que debe verificarse el fallo original.\n\nAnalizá TODOS los documentos incluidos en el contexto que tengan Markdown. Para cada criterio jurídico relevante que surja de los fallos, indicá: (1) el criterio o regla identificada, (2) qué documento(s) lo sostienen, (3) los hechos y fundamentos del documento que permiten entenderlo, y (4) cómo se aplica o cuál es su alcance en ese caso. Compará coincidencias y diferencias entre los fallos y señalá si un criterio no aparece o si el material no alcanza para afirmarlo. Si la pregunta pide extraer criterios y explicarlos en contexto, esa extracción y explicación es obligatoria. Incluí al final fuentes con el nombre y enlace oficial disponible de cada documento utilizado.\n\nEl contexto ya contiene los metadatos JSON y el texto Markdown necesario. No abras, leas ni solicites archivos del sistema, no uses herramientas, no generes referencias del tipo <<archivo.md>> y no describas pasos intermedios. Emití una única respuesta final completa; no termines después de un plan o una introducción.\n\nOrden obligatorio de lectura: primero analizá los objetos metadata, que representan los archivos JSON y ya fueron filtrados por año, mes y materia/categoría. Después leé exclusivamente el campo markdown de los documentos seleccionados. Si metadata indica un PDF sin su versión Markdown, la preparación previa debe crear un .md derivado sin modificar el PDF ni el JSON; recién después se puede leer ese Markdown. No leas ni uses el contenido binario del PDF directamente y no inventes el contenido de un Markdown faltante.\n\nTipo de salida: ${mode === "report" ? "informe comparativo con hallazgos, criterios, contexto por documento, límites y próximos pasos" : "respuesta analítica completa, organizada por criterios y documentos, sin reducirla a una respuesta acotada"}.\nPregunta del usuario: ${question}\nContexto JSON: ${context}`;
+  const fitted = isLookup
+    ? fitLookupContext({ search, documents, maxBytes: contextLimitBytes == null ? Number.MAX_SAFE_INTEGER : contextLimitBytes })
+    : fitContext({ search, documents, maxBytes: contextLimitBytes == null ? Number.MAX_SAFE_INTEGER : contextLimitBytes });
+  const context = isLookup ? serializedLookupContext(search, fitted.selected) : serializedContext(search, fitted.selected);
+  const prompt = isLookup
+    ? `Sos un asistente de consulta documental jurídica. Respondé en español rioplatense, con claridad y precisión. La aplicación ya realizó una búsqueda local exacta y verificable sobre los documentos. Usá el contexto JSON para redactar un resumen breve: mencioná el término, los filtros y la cantidad de coincidencias; si hay una observación útil en los fragmentos, podés señalarla. No inventes resultados ni conviertas esta consulta en un análisis jurídico general. No enumeres documentos: la aplicación anexará a continuación el listado completo y verificará que no falte ninguno. Si no hay documentos, indicá claramente que no se encontraron coincidencias. No des asesoramiento jurídico definitivo y recordá verificar el fallo original.\n\nUsá exclusivamente el contexto JSON entregado. No uses herramientas, no leas archivos del sistema y no generes referencias inventadas. Emití solo el resumen breve solicitado.\n\nPregunta del usuario: ${question}\nContexto JSON: ${context}`
+    : `Sos un asistente de análisis jurídico para un prototipo. Respondé en español rioplatense, con lenguaje claro, preciso y prudente. La pregunta del usuario define la tarea: cumplila de forma completa y no la reemplaces por una mera lista de documentos ni por un resumen técnico del proceso. Usá solamente el contexto JSON entregado. No inventes hechos, normas ni precedentes; distinguí expresamente entre lo que surge del texto y cualquier inferencia. No des asesoramiento jurídico definitivo y recordá que debe verificarse el fallo original.\n\nAnalizá TODOS los documentos incluidos en el contexto que tengan Markdown. Para cada criterio jurídico relevante que surja de los fallos, indicá: (1) el criterio o regla identificada, (2) qué documento(s) lo sostienen, (3) los hechos y fundamentos del documento que permiten entenderlo, y (4) cómo se aplica o cuál es su alcance en ese caso. Compará coincidencias y diferencias entre los fallos y señalá si un criterio no aparece o si el material no alcanza para afirmarlo. Si la pregunta pide extraer criterios y explicarlos en contexto, esa extracción y explicación es obligatoria. Incluí al final fuentes con el nombre y enlace oficial disponible de cada documento utilizado.\n\nEl contexto ya contiene los metadatos JSON y el texto Markdown necesario. No abras, leas ni solicites archivos del sistema, no uses herramientas, no generes referencias del tipo <<archivo.md>> y no describas pasos intermedios. Emití una única respuesta final completa; no termines después de un plan o una introducción.\n\nOrden obligatorio de lectura: primero analizá los objetos metadata, que representan los archivos JSON y ya fueron filtrados por año, mes y materia/categoría. Después leé exclusivamente el campo markdown de los documentos seleccionados. Si metadata indica un PDF sin su versión Markdown, la preparación previa debe crear un .md derivado sin modificar el PDF ni el JSON; recién después se puede leer ese Markdown. No leas ni uses el contenido binario del PDF directamente y no inventes el contenido de un Markdown faltante.\n\nTipo de salida: ${mode === "report" ? "informe comparativo con hallazgos, criterios, contexto por documento, límites y próximos pasos" : "respuesta analítica completa, organizada por criterios y documentos, sin reducirla a una respuesta acotada"}.\nPregunta del usuario: ${question}\nContexto JSON: ${context}`;
   const selectedModel = validModel(model) || validModel(DEFAULT_MODEL);
 
   try {
     const output = await runOpenCode({ model: selectedModel, prompt });
-    return { answer: output.text, provider: "opencode", model: selectedModel || "configurado por OpenCode", contextBytes: fitted.bytes, contextLimitBytes, contextDocuments: fitted.selected.length, contextOmitted: fitted.omitted };
+    const answer = isLookup ? `${output.text.trim()}\n\n${lookupDocumentList(documents, search)}` : output.text;
+    return { answer, provider: "opencode", model: selectedModel || "configurado por OpenCode", contextBytes: fitted.bytes, contextLimitBytes, contextDocuments: fitted.selected.length, contextOmitted: fitted.omitted, ...(isLookup ? { contextOmittedDocuments: fitted.omittedDocuments } : {}) };
   } catch (error) {
     const aiError = classifyOpenCodeError(error);
     const fallbackResult = fallback();
@@ -288,7 +360,8 @@ export async function synthesize({ question, mode, search, documents, model, con
       contextBytes: fitted.bytes,
       contextLimitBytes,
       contextDocuments: fitted.selected.length,
-      contextOmitted: fitted.omitted
+      contextOmitted: fitted.omitted,
+      ...(isLookup ? { contextOmittedDocuments: fitted.omittedDocuments } : {})
     };
   }
 }
