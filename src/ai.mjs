@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 const DEFAULT_MODEL = process.env.OPENCODE_MODEL || "opencode/muse-spark-1.2-contributor-free";
 const DEFAULT_CONTEXT_BYTES = Number(process.env.LOCAL_CONTEXT_MAX_BYTES || 100 * 1024);
+const DEFAULT_QUERY_TIMEOUT_MS = Number(process.env.OPENCODE_TIMEOUT_MS || 180_000);
 const OPENCODE_BIN = process.env.OPENCODE_BIN || "opencode";
 
 function byteLength(value) {
@@ -76,11 +77,14 @@ function validModel(value) {
 function parseOpenCodeEvents(stdout) {
   const lines = stdout.split(/\r?\n/).filter(Boolean);
   const texts = [];
+  const plainText = [];
+  let parsedEvents = 0;
   let completed = false;
   let eventError = null;
   for (const line of lines) {
     try {
       const event = JSON.parse(line);
+      parsedEvents += 1;
       const candidates = [event.text, event.part?.text, event.message?.content, event.data?.text];
       const text = candidates.find((value) => typeof value === "string" && value.trim());
       if (text) texts.push(text);
@@ -88,9 +92,12 @@ function parseOpenCodeEvents(stdout) {
       if (event.type === "error") eventError = event.error?.message || event.message || "OpenCode informó un error";
     } catch {
       // El formato estándar puede mezclar texto legible y eventos no JSON.
+      plainText.push(line);
     }
   }
-  return { text: texts.join("").trim() || stdout.trim(), completed, eventError };
+  // No devuelvas los eventos JSON internos como si fueran una respuesta parcial.
+  // Solo se conserva texto plano cuando la salida no fue un flujo JSON.
+  return { text: texts.join("").trim() || (parsedEvents === 0 ? plainText.join("\n").trim() : ""), completed, eventError };
 }
 
 function classifyOpenCodeError(error) {
@@ -128,7 +135,7 @@ function classifyOpenCodeError(error) {
   };
 }
 
-function runOpenCode({ model, prompt, timeoutMs = Number(process.env.OPENCODE_TIMEOUT_MS || 90_000) }) {
+function runOpenCode({ model, prompt, timeoutMs = DEFAULT_QUERY_TIMEOUT_MS }) {
   return new Promise((resolve, reject) => {
     const args = ["run", "--pure", "--format", "json"];
     if (model) args.push("--model", model);

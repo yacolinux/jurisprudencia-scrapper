@@ -108,7 +108,7 @@ OPENCODE_ENABLED=1
 OPENCODE_MODEL=opencode/muse-spark-1.2-contributor-free
 ```
 
-La interfaz de Consulta actualiza la lista de modelos free mediante `GET /api/models`, permite elegir el modelo con “Elegir IA” y envía la selección junto con cada consulta. Las variables principales están en `.env.example`: puertos, `DATA_DIR`, modo de acceso remoto, límites de documentos, límites de PDF, reintentos y parámetros de OpenCode.
+La interfaz de Consulta actualiza la lista de modelos free mediante `GET /api/models`, permite elegir el modelo con “Elegir IA” y envía la selección junto con cada consulta. La síntesis completa usa `OPENCODE_TIMEOUT_MS` (180000 ms por defecto); el diagnóstico de respuesta mínima mantiene 30000 ms. Las variables principales están en `.env.example`: puertos, `DATA_DIR`, modo de acceso remoto, límites de documentos, límites de PDF, reintentos y parámetros de OpenCode.
 
 ## Desarrollo y verificación
 
