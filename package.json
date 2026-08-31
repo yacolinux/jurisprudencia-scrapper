@@ -9,5 +9,9 @@
     "start:mcp": "node src/server.mjs",
     "start:xvfb": "xvfb-run -a --server-args='-screen 0 1280x900x24 -nolisten tcp' node src/server.mjs",
     "test": "node --test"
+  },
+  "dependencies": {
+    "docx": "^9.6.1",
+    "pdf-lib": "^1.17.1"
   }
 }

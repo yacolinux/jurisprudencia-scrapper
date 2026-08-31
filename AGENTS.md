@@ -52,7 +52,8 @@ Cada PDF puede tener un JSON lateral con el mismo nombre más `.json` y un Markd
 3. Aplica año, mes y materia/categoría opcionales.
 4. Si hace falta contenido, busca el `.md` lateral.
 5. Si el PDF no tiene `.md`, ejecuta `pdftotext` en memoria y crea el derivado con escritura exclusiva (`flag: "wx"`).
-6. Entrega a la IA únicamente `metadata` y `markdown`; el prompt prohíbe leer el PDF binario directamente.
+6. No existe un límite fijo de cantidad para la consulta local: incorpora todos los candidatos hasta `LOCAL_CONTEXT_MAX_BYTES` (por defecto, aproximadamente 100 KiB de JSON y Markdown).
+7. Entrega a la IA únicamente `metadata` y `markdown`; el prompt prohíbe leer el PDF binario directamente.
 
 El contenedor de Consulta monta `/data` como solo lectura y `/data-write` como ruta separada de escritura. Las escrituras locales normales están limitadas a Markdown derivados. El `manifest.json`, los PDFs y los JSON existentes no se modifican.
 
@@ -63,6 +64,10 @@ La interfaz está en `public-query/`. La respuesta incluye una columna lateral �
 - `/api/local/file?path=...`
 
 Las rutas deben validarse contra la raíz de datos antes de leerlas.
+
+Después de una consulta, la respuesta incluye `contextReview` con los candidatos encontrados, los documentos enviados y los omitidos por presupuesto de contexto. La interfaz muestra esos conteos en un frame previo a la respuesta, permite abrir y copiar cada listado y ofrece `retryAllDocuments: true` para repetir la consulta local sin el límite de 100 KiB. El reintento puede superar la ventana del modelo y debe informar el error si ocurre.
+
+Los errores de OpenCode no deben quedar mezclados únicamente con la respuesta generada. `synthesize()` devuelve `aiError` con código, título, mensaje y acción sugerida; reconoce especialmente timeout (`OPENCODE_TIMEOUT`) y exceso de contexto (`OPENCODE_CONTEXT_LIMIT`). Si existe texto parcial, se conserva como `partialAnswer` y la interfaz lo presenta como respuesta incompleta.
 
 ## Checkbox de ampliación remota
 
@@ -100,10 +105,10 @@ El modelo LLM se configura en Compose mediante:
 
 ```text
 OPENCODE_ENABLED=1
-OPENCODE_MODEL=opencode/nemotron-3.5-lightning-free
+OPENCODE_MODEL=opencode/muse-spark-1.2-contributor-free
 ```
 
-Las variables principales están en `.env.example`: puertos, `DATA_DIR`, modo de acceso remoto, límites de documentos, límites de PDF, reintentos y parámetros de OpenCode.
+La interfaz de Consulta actualiza la lista de modelos free mediante `GET /api/models`, permite elegir el modelo con “Elegir IA” y envía la selección junto con cada consulta. Las variables principales están en `.env.example`: puertos, `DATA_DIR`, modo de acceso remoto, límites de documentos, límites de PDF, reintentos y parámetros de OpenCode.
 
 ## Desarrollo y verificación
 
@@ -111,9 +116,12 @@ Ejecutar desde la raíz:
 
 ```bash
 npm test
+node --check public-query/app.js
+node --check src/ai.mjs
 node --check src/web-server.mjs
 node --check src/local-search.mjs
 node --check src/server.mjs
+node --check src/export.mjs
 git diff --check
 ```
 

@@ -7,9 +7,10 @@ import { JurisprudenciaClient } from "./jurisprudencia-client.mjs";
 import { ArchiveStore } from "./archive-store.mjs";
 import { BatchCollector, validateBatchInput } from "./collector.mjs";
 import { JobManager } from "./job-manager.mjs";
-import { synthesize } from "./ai.mjs";
+import { listOpenCodeModels, probeOpenCode, synthesize } from "./ai.mjs";
 import { LocalArchiveSearch, resolveLocalMarkdown, resolveLocalMetadata, resolveLocalPdf } from "./local-search.mjs";
 import { archiveMissingRemote } from "./remote-archive.mjs";
+import { createDocxExport, createPdfExport, exportFilename } from "./export.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const PUBLIC = resolve(process.env.PUBLIC_DIR || join(ROOT, "public"));
@@ -17,6 +18,7 @@ const PORT = Number(process.env.PORT || 3000);
 const APP_MODE = process.env.APP_MODE || "archive";
 const IS_ARCHIVE = APP_MODE === "archive";
 const MAX_BODY = 100_000;
+const MAX_EXPORT_BODY = 8_000_000;
 const mcp = new LocalMcpClient({ timeoutMs: Number(process.env.MCP_TIMEOUT_MS || 120_000) });
 const DATA_DIR = resolve(process.env.DATA_DIR || join(ROOT, "data"));
 const localSearch = new LocalArchiveSearch(DATA_DIR);
@@ -37,11 +39,11 @@ function errorPayload(error) {
   };
 }
 
-async function body(request) {
+async function body(request, maxBody = MAX_BODY) {
   let value = "";
   for await (const chunk of request) {
     value += chunk;
-    if (value.length > MAX_BODY) throw Object.assign(new Error("El cuerpo de la consulta es demasiado grande"), { code: "BODY_TOO_LARGE" });
+    if (value.length > maxBody) throw Object.assign(new Error("El cuerpo de la consulta es demasiado grande"), { code: "BODY_TOO_LARGE" });
   }
   try { return JSON.parse(value || "{}"); } catch { throw Object.assign(new Error("El cuerpo debe ser JSON válido"), { code: "INVALID_JSON" }); }
 }
@@ -84,7 +86,7 @@ async function runRemoteQuery(question, input, filters) {
     page: 1,
     perPage: Math.min(Number(filters.perPage) || 10, 10)
   });
-  const selected = (search.results || []).filter((result) => result.id || result.pdfUrl).slice(0, Number(process.env.MAX_DOCUMENTS || 3));
+  const selected = (search.results || []).filter((result) => result.id || result.pdfUrl).slice(0, Number(process.env.REMOTE_MAX_DOCUMENTS || process.env.MAX_DOCUMENTS || 3));
   const documents = [];
   for (const result of selected) {
     let detail = null;
@@ -192,7 +194,8 @@ async function runQuery(input) {
   if (question.length < 5) throw Object.assign(new Error("Escribí una consulta de al menos 5 caracteres"), { code: "INVALID_QUERY" });
   const mode = input.mode === "report" ? "report" : "single";
   const filters = input.filters && typeof input.filters === "object" ? input.filters : {};
-  const local = await localSearch.search({ question, searchText: input.searchText, filters, limit: Number(process.env.MAX_DOCUMENTS || 3) });
+  const retryAllDocuments = input.retryAllDocuments === true;
+  const local = await localSearch.search({ question, searchText: input.searchText, filters, allDocuments: retryAllDocuments });
   let search = local.search;
   let documents = local.documents;
   let remote = { requested: input.includeRemote === true, enabled: false, total: 0 };
@@ -214,7 +217,18 @@ async function runQuery(input) {
       remote = { requested: true, enabled: false, total: 0, error: error.message };
     }
   }
-  const synthesis = await synthesize({ question, mode, search, documents });
+  const synthesis = await synthesize({ question, mode, search, documents, model: input.model, contextLimitBytes: retryAllDocuments ? null : local.contextLimitBytes });
+  const sentCount = Number.isInteger(synthesis.contextDocuments) ? synthesis.contextDocuments : local.documents.length;
+  const contextReview = {
+    candidateCount: local.contextCandidates.length,
+    sentCount,
+    omittedCount: local.contextOmitted.length,
+    candidates: local.contextCandidates,
+    sent: local.contextSent.slice(0, sentCount),
+    omitted: local.contextOmitted,
+    allDocuments: retryAllDocuments,
+    contextLimitBytes: local.contextLimitBytes
+  };
   return {
     question,
     mode,
@@ -224,11 +238,12 @@ async function runQuery(input) {
     derivedMarkdownOnly: true,
     derivedMarkdownCreated: local.createdMarkdown + (remote.createdMarkdown || 0),
     sources: {
-      local: { enabled: true, indexed: local.indexed, periodCandidates: local.periodCandidates, scannedPdfs: local.scannedPdfs, createdMarkdown: local.createdMarkdown, matchStrategy: local.matchStrategy, updatedAt: local.updatedAt },
+      local: { enabled: true, indexed: local.indexed, periodCandidates: local.periodCandidates, scannedPdfs: local.scannedPdfs, createdMarkdown: local.createdMarkdown, matchStrategy: local.matchStrategy, contextBytes: local.contextBytes, contextLimitBytes: local.contextLimitBytes, contextAllDocuments: local.contextAllDocuments, contextCandidates: local.contextCandidates.length, contextSent: local.contextSent.length, contextOmitted: local.contextOmitted.length, omittedByContext: local.omittedByContext, updatedAt: local.updatedAt },
       remote
     },
     search: { source: search.source, total: search.total, page: search.page, totalPages: search.totalPages, results: search.results || [] },
     documents,
+    contextReview,
     ...synthesis,
     generatedAt: new Date().toISOString(),
     accessMode: process.env.JURIS_ACCESS_MODE || "auto",
@@ -285,8 +300,26 @@ const server = createServer(async (request, response) => {
       return json(response, 200, { ok: true, service: `${APP_MODE}-jurisprudencia-web`, appMode: APP_MODE, mcpStarted: mcp.started, nonDestructiveQuery: !IS_ARCHIVE, derivedMarkdownOnly: !IS_ARCHIVE, dataDir: DATA_DIR, accessMode: process.env.JURIS_ACCESS_MODE || "auto", ...(IS_ARCHIVE ? { archive: await archiveStore.summary() } : {}) });
     }
     if (request.method === "GET" && url.pathname === "/api/diagnose") {
-      const diagnosis = await enqueue(() => mcp.callTool("diagnose_jurisprudencia_access"));
+      const diagnosis = await enqueue(async () => ({
+        ...(await mcp.callTool("diagnose_jurisprudencia_access")),
+        ai: await probeOpenCode()
+      }));
       return json(response, 200, diagnosis);
+    }
+    if (request.method === "GET" && url.pathname === "/api/models") {
+      return json(response, 200, await listOpenCodeModels({ refresh: true }));
+    }
+    if (request.method === "POST" && ["/api/export/docx", "/api/export/pdf"].includes(url.pathname)) {
+      const input = await body(request, MAX_EXPORT_BODY);
+      const format = url.pathname.endsWith("/pdf") ? "pdf" : "docx";
+      const file = format === "pdf" ? await createPdfExport(input) : await createDocxExport(input);
+      response.writeHead(200, {
+        "content-type": format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "content-disposition": `attachment; filename="${exportFilename(format)}"`,
+        "content-length": file.length,
+        "cache-control": "no-store"
+      });
+      return response.end(file);
     }
     if (request.method === "POST" && url.pathname === "/api/query") {
       const input = await body(request);

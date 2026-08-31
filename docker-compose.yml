@@ -18,8 +18,7 @@ services:
       # iniciado manualmente con --remote-debugging-port=9222.
       JURIS_CDP_URL: ${JURIS_CDP_URL:-}
       JURIS_CHALLENGE_TIMEOUT_MS: ${JURIS_CHALLENGE_TIMEOUT_MS:-60000}
-      MAX_DOCUMENTS: ${MAX_DOCUMENTS:-3}
-      MAX_PDF_CHARS: ${MAX_PDF_CHARS:-18000}
+      MAX_PDF_CHARS: ${MAX_PDF_CHARS:-100000}
       BATCH_PAGE_SIZE: ${BATCH_PAGE_SIZE:-100}
       BATCH_MAX_PAGES: ${BATCH_MAX_PAGES:-500}
       BATCH_DELAY_MS: ${BATCH_DELAY_MS:-350}
@@ -31,7 +30,7 @@ services:
       # Modelo gratuito de OpenCode validado dentro del contenedor. Se puede
       # desactivar con OPENCODE_ENABLED=0 en un archivo .env local.
       OPENCODE_ENABLED: ${OPENCODE_ENABLED:-1}
-      OPENCODE_MODEL: ${OPENCODE_MODEL:-opencode/nemotron-3.5-lightning-free}
+      OPENCODE_MODEL: ${OPENCODE_MODEL:-opencode/muse-spark-1.2-contributor-free}
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
     init: true
     restart: "no"
@@ -60,10 +59,11 @@ services:
       JURIS_USE_XVFB: ${JURIS_USE_XVFB:-1}
       JURIS_CDP_URL: ${JURIS_CDP_URL:-}
       JURIS_CHALLENGE_TIMEOUT_MS: ${JURIS_CHALLENGE_TIMEOUT_MS:-60000}
-      MAX_DOCUMENTS: ${MAX_DOCUMENTS:-3}
-      MAX_PDF_CHARS: ${MAX_PDF_CHARS:-18000}
+      REMOTE_MAX_DOCUMENTS: ${REMOTE_MAX_DOCUMENTS:-3}
+      MAX_PDF_CHARS: ${MAX_PDF_CHARS:-100000}
+      LOCAL_CONTEXT_MAX_BYTES: ${LOCAL_CONTEXT_MAX_BYTES:-102400}
       OPENCODE_ENABLED: ${OPENCODE_ENABLED:-1}
-      OPENCODE_MODEL: ${OPENCODE_MODEL:-opencode/nemotron-3.5-lightning-free}
+      OPENCODE_MODEL: ${OPENCODE_MODEL:-opencode/muse-spark-1.2-contributor-free}
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
     init: true
     restart: "no"

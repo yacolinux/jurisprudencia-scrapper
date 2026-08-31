@@ -8,13 +8,14 @@ ENV NODE_ENV=production \
     OPENCODE_ENABLED=0
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends chromium chromium-sandbox xvfb poppler-utils ca-certificates fonts-liberation \
+  && apt-get install -y --no-install-recommends chromium chromium-sandbox xvfb poppler-utils ca-certificates curl fonts-liberation \
   && npm install --global opencode-ai \
   && useradd --create-home --shell /bin/bash app \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY package.json ./
+RUN npm install --omit=dev
 COPY src ./src
 COPY public ./public
 COPY public-query ./public-query

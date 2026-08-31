@@ -135,6 +135,52 @@ function challengeResponse(response, body) {
   return response.headers.get("cf-mitigated") === "challenge" || /security check|required|just a moment|verificando la conexión|enable javascript and cookies/i.test(body.slice(0, 50_000));
 }
 
+function curlPortalAttempt(url, timeoutMs, address) {
+  return new Promise((resolve, reject) => {
+    const marker = "__JURIS_CURL_META__";
+    const seconds = Math.max(1, Math.ceil(timeoutMs / 1_000));
+    const writeOut = "\n" + marker + "%{http_code}\t%{url_effective}\t%{content_type}\n";
+    const args = ["--ipv6", "--location", "--silent", "--show-error", "--retry", "2", "--retry-delay", "1", "--retry-connrefused", "--connect-timeout", String(Math.min(seconds, 10)), "--max-time", String(seconds), "--write-out", writeOut];
+    if (address) args.push("--resolve", new URL(url).hostname + ":443:[" + address + "]");
+    args.push(url);
+    execFile("curl", args, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const output = String(stdout || "");
+      const position = output.lastIndexOf("\n" + marker);
+      const body = position >= 0 ? output.slice(0, position) : output;
+      const metadata = position >= 0 ? output.slice(position + marker.length + 1).trim().split("\t") : [];
+      const result = { status: Number(metadata[0]) || null, finalUrl: metadata[1] || url, contentType: metadata[2] || null, body };
+      if (error && !result.status) {
+        const reason = String(stderr || error.message || "curl no pudo completar la solicitud").trim();
+        const wrapped = new Error(reason);
+        wrapped.code = typeof error.code === "number" ? "CURL_EXIT_" + error.code : error.code || "CURL_ERROR";
+        reject(wrapped);
+        return;
+      }
+      resolve(result);
+    });
+  });
+}
+
+async function curlPortal(url, timeoutMs) {
+  const host = new URL(url).hostname;
+  const addresses = await new Promise((resolve) => {
+    execFile("getent", ["hosts", host], (error, stdout) => {
+      if (error) return resolve([]);
+      resolve([...new Set(String(stdout).split(/\s+/).filter((value) => value.includes(":") && value !== "::1"))]);
+    });
+  });
+  const candidates = addresses.length ? addresses : [null];
+  let lastError;
+  for (const address of candidates) {
+    try {
+      return await curlPortalAttempt(url, timeoutMs, address);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("curl no pudo resolver el portal");
+}
+
 async function directFetch(url, { binary = false } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Number(process.env.JURIS_DIRECT_TIMEOUT_MS || 20_000));
@@ -612,34 +658,91 @@ export class JurisprudenciaClient {
   }
 
   async diagnose() {
-    const cdpUrl = process.env.JURIS_CDP_URL?.replace(/\/+$/, "");
+    const cdpUrl = (process.env.JURIS_CDP_URL || "http://127.0.0.1:9222").replace(/\/+$/, "");
     let cdpReachable = false;
+    let cdpStatus = null;
+    let cdpError = null;
     if (cdpUrl) {
       try {
         const response = await requestJson(`${cdpUrl}/json/version`);
+        cdpStatus = response.status;
         cdpReachable = response.status >= 200 && response.status < 300;
-      } catch {
+        if (!cdpReachable) cdpError = `El puerto respondió HTTP ${response.status}`;
+      } catch (error) {
+        cdpError = error.message;
+        if (error.cause?.code) cdpError += ` (${error.cause.code})`;
         cdpReachable = false;
       }
     }
-    const response = await fetch(BASE_URL + "/", { redirect: "manual" });
-    const body = await response.text();
-    const challenge = response.headers.get("cf-mitigated") === "challenge" || /Security Check Required|Verificando la conexión/i.test(body);
+    let portal = {
+      status: null,
+      contentType: null,
+      finalUrl: null,
+      queryPage: false,
+      challenge: false,
+      error: null,
+      cloudflareMitigated: null,
+      cloudflareRay: null
+    };
+    try {
+      const probe = await curlPortal(`${BASE_URL}${SEARCH_PATH}?filtros=1`, Number(process.env.JURIS_DIAGNOSE_TIMEOUT_MS || 20_000));
+      const response = { ok: probe.status >= 200 && probe.status < 300, headers: { get: (name) => name.toLocaleLowerCase() === "content-type" ? probe.contentType : null } };
+      const body = probe.body;
+      const challenge = challengeResponse(response, body);
+      const finalUrl = probe.finalUrl || `${BASE_URL}${SEARCH_PATH}?filtros=1`;
+      const queryPage = !challenge && response.ok && (finalUrl.includes(SEARCH_PATH) || /fallosstj|filtros=1|jurisprudencia/i.test(body));
+      portal = {
+        status: probe.status,
+        contentType: probe.contentType,
+        finalUrl,
+        queryPage,
+        challenge,
+        error: null,
+        cloudflareMitigated: null,
+        cloudflareRay: null
+      };
+    } catch (error) {
+      portal.error = error.message;
+      portal.errorCode = error.cause?.code || error.code || (error.name === "AbortError" ? "TIMEOUT" : null);
+      portal.errorCause = error.cause?.message || null;
+    }
+    const portalReady = portal.queryPage === true;
     return {
-      url: BASE_URL + "/",
-      status: response.status,
-      contentType: response.headers.get("content-type"),
-      cloudflareMitigated: response.headers.get("cf-mitigated"),
-      cloudflareRay: response.headers.get("cf-ray"),
-      challenge,
-      cdpConfigured: Boolean(cdpUrl),
+      url: `${BASE_URL}${SEARCH_PATH}?filtros=1`,
+      status: portal.status,
+      contentType: portal.contentType,
+      finalUrl: portal.finalUrl,
+      cloudflareMitigated: portal.cloudflareMitigated,
+      cloudflareRay: portal.cloudflareRay,
+      challenge: portal.challenge,
+      portalQueryPage: portal.queryPage,
+      portalReachable: portalReady,
+      portalError: portal.error,
+      portalErrorCode: portal.errorCode || null,
+      portalErrorCause: portal.errorCause || null,
+      portalAction: portal.error
+        ? "Verificá salida HTTPS, DNS y certificados desde el contenedor; repetí el curl al portal."
+        : portal.challenge
+        ? "Abrí el portal en una ventana de navegador, completá Cloudflare y volvé a verificar."
+        : !portalReady
+        ? "El servidor respondió, pero no entregó la página final de consulta."
+        : null,
+      cdpUrl,
+      cdpConfigured: true,
       cdpReachable,
-      recommendedAccessMode: cdpReachable ? "cdp" : challenge ? "browser" : "direct",
+      cdpStatus,
+      cdpError,
+      cdpAction: cdpError ? `Comprobá que Chrome esté escuchando en ${cdpUrl} y que el puerto sea accesible desde el contenedor.` : null,
+      recommendedAccessMode: cdpReachable ? "cdp" : portal.challenge ? "browser" : "direct",
       configuredAccessMode: process.env.JURIS_ACCESS_MODE || "auto",
       message: cdpReachable
         ? "Hay un Chrome externo disponible por CDP; el MCP lo reutilizará para conservar la sesión gráfica que supera el desafío."
-        : challenge
+        : portal.challenge
         ? "El acceso HTTP directo recibe el desafío de Cloudflare; en modo auto las consultas usan Chromium dentro de Xvfb para conservar una sesión normal."
+        : portal.error
+        ? `No se pudo completar la comprobación de la página de consulta: ${portal.error}`
+        : !portalReady
+        ? "El portal respondió, pero no se llegó a la página final de consulta."
         : "El acceso HTTP directo no fue bloqueado en esta prueba; en modo auto se evita iniciar Chromium."
     };
   }

@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ArchiveStore, archiveRelativePath, parseCourtDate } from "../src/archive-store.mjs";
 import { BatchCollector, validateBatchInput } from "../src/collector.mjs";
 import { LocalArchiveSearch, resolveLocalPdf } from "../src/local-search.mjs";
 import { archiveMissingRemote } from "../src/remote-archive.mjs";
+import { normalizeExportPayload } from "../src/export.mjs";
 
 test("interpreta fechas del portal y genera una ruta humana", () => {
   const date = parseCourtDate("25-08-2026");
@@ -100,6 +101,92 @@ test("la búsqueda local lee el manifest sin crearlo ni modificarlo", async () =
   }
 });
 
+test("la consulta local no limita la cantidad de documentos a tres", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archivo-jurisprudencia-local-many-"));
+  try {
+    const documents = Array.from({ length: 5 }, (_, index) => ({
+      id: index + 1,
+      materia: "Amparo",
+      fecha: "25-08-2026",
+      caratula: `Criterio IOSCOR ${index + 1}`,
+      path: `2026/08-agosto/semana-35/25-08-2026/amparo/fallo-${index + 1}.pdf`
+    }));
+    await writeFile(join(root, "manifest.json"), JSON.stringify({ version: 1, documents }));
+    for (const document of documents) {
+      const markdownPath = join(root, document.path.replace(/\.pdf$/i, ".md"));
+      await mkdir(join(markdownPath, ".."), { recursive: true });
+      await writeFile(markdownPath, `# ${document.caratula}\n\nEl fallo explica el criterio de cobertura de IOSCOR.`);
+    }
+    const search = new LocalArchiveSearch(root, { maxContextBytes: 100 * 1024 });
+    const result = await search.search({ question: "criterios de amparo contra IOSCOR", filters: { materia: "Amparo" } });
+    assert.equal(result.documents.length, 5);
+    assert.equal(result.search.total, 5);
+    assert.ok(result.contextBytes <= result.contextLimitBytes);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("la consulta local respeta el presupuesto aproximado de 100 KiB", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archivo-jurisprudencia-local-budget-"));
+  try {
+    const documents = Array.from({ length: 3 }, (_, index) => ({
+      id: index + 1,
+      materia: "Amparo",
+      fecha: "25-08-2026",
+      caratula: `Fallo extenso ${index + 1}`,
+      path: `2026/08-agosto/semana-35/25-08-2026/amparo/extenso-${index + 1}.pdf`
+    }));
+    await writeFile(join(root, "manifest.json"), JSON.stringify({ version: 1, documents }));
+    for (const document of documents) {
+      const markdownPath = join(root, document.path.replace(/\.pdf$/i, ".md"));
+      await mkdir(join(markdownPath, ".."), { recursive: true });
+      await writeFile(markdownPath, "criterios ".repeat(7_000));
+    }
+    const search = new LocalArchiveSearch(root, { maxContextBytes: 100 * 1024 });
+    const result = await search.search({ question: "criterios", filters: { materia: "Amparo" } });
+    assert.equal(result.contextCandidates.length, 3);
+    assert.equal(result.contextOmitted.length, 1);
+    assert.ok(result.documents.length >= 2);
+    assert.ok(result.contextBytes <= 100 * 1024);
+    assert.ok(result.documents.some((document) => document.contextTruncated));
+    const retry = await search.search({ question: "criterios", filters: { materia: "Amparo" }, allDocuments: true });
+    assert.equal(retry.contextCandidates.length, 3);
+    assert.equal(retry.contextOmitted.length, 0);
+    assert.equal(retry.documents.length, 3);
+    assert.equal(retry.contextLimitBytes, null);
+    assert.ok(retry.contextBytes > 100 * 1024);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("crea el Markdown derivado antes de incluir un PDF local en la consulta", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archivo-jurisprudencia-local-markdown-"));
+  try {
+    const document = {
+      id: 999,
+      materia: "Amparo",
+      fecha: "25-08-2026",
+      caratula: "Fallo sin Markdown",
+      path: "2026/08-agosto/semana-35/25-08-2026/amparo/sin-markdown.pdf"
+    };
+    await writeFile(join(root, "manifest.json"), JSON.stringify({ version: 1, documents: [document] }));
+    const pdfPath = join(root, document.path);
+    await mkdir(join(pdfPath, ".."), { recursive: true });
+    await writeFile(pdfPath, "%PDF-original");
+    const search = new LocalArchiveSearch(root, { extractText: async () => "Texto derivado del fallo y su criterio." });
+    const result = await search.search({ question: "criterio", filters: { materia: "Amparo" } });
+    const markdownPath = join(root, document.path.replace(/\.pdf$/i, ".md"));
+    assert.equal(result.createdMarkdown, 1);
+    assert.equal(result.documents[0].markdownCreated, true);
+    assert.match(await readFile(markdownPath, "utf8"), /Texto derivado/);
+    assert.equal((await readFile(pdfPath, "utf8")), "%PDF-original");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("la ampliación remota archiva solo faltantes sin tocar el PDF existente", async () => {
   const root = await mkdtemp(join(tmpdir(), "archivo-jurisprudencia-remoto-test-"));
   try {
@@ -115,4 +202,23 @@ test("la ampliación remota archiva solo faltantes sin tocar el PDF existente", 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("la exportación conserva consulta, modelo, respuesta y enlaces permitidos", () => {
+  const result = normalizeExportPayload({
+    question: "criterios de amparo",
+    model: "opencode/big-pickle",
+    answer: "Respuesta de prueba",
+    references: [{
+      title: "Fallo local",
+      links: [
+        { label: "PDF", url: "http://localhost:3001/api/local/file?path=fallo.pdf" },
+        { label: "No permitido", url: "javascript:alert(1)" }
+      ]
+    }]
+  });
+  assert.equal(result.question, "criterios de amparo");
+  assert.equal(result.model, "opencode/big-pickle");
+  assert.equal(result.answer, "Respuesta de prueba");
+  assert.deepEqual(result.references[0].links, [{ label: "PDF", url: "http://localhost:3001/api/local/file?path=fallo.pdf" }]);
 });

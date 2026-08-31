@@ -20,42 +20,44 @@
         <div class="hero-note"><span>FLUJO LOCAL DE IA</span><strong>Filtrar el JSON<br>Leer el Markdown<br>Sintetizar la respuesta</strong></div>
       </section>
 
-      <section id="setupPanel" class="card setup-panel" aria-labelledby="setup-title">
-        <div class="setup-header">
-          <div><p class="eyebrow">ANTES DE CONSULTAR</p><h2 id="setup-title">Preparación del acceso remoto</h2></div>
-          <div id="setupState" class="setup-state is-loading" role="status" aria-live="polite"><i></i><span id="setupStateText">Comprobando acceso…</span></div>
+      <details id="setupPanel" class="card setup-panel" aria-labelledby="setup-title">
+        <summary class="setup-summary">
+          <div><p class="eyebrow">ANTES DE CONSULTAR</p><h2 id="setup-title">Verificación de acceso</h2></div>
+          <div id="setupState" class="setup-state is-idle" role="status" aria-live="polite"><i></i><span id="setupStateText">No verificado aún</span></div>
+        </summary>
+        <div class="setup-content">
+          <p class="setup-intro">Comprobá en secuencia el acceso local, el portal oficial y el modelo IA antes de consultar.</p>
+          <div class="setup-tests-heading"><h3>Verificar</h3><button id="refreshDiagnosis" class="quiet" type="button">Verificar</button></div>
+          <div class="setup-checks">
+            <article id="chromeCheck" class="setup-check is-idle">
+              <div class="setup-check-icon" aria-hidden="true">⌁</div>
+              <div><p>Chrome / CDP</p><h3 id="chromeStatus">No verificado aún</h3><span id="chromeDetail">Puerto local http://127.0.0.1:9222.</span></div>
+            </article>
+            <article id="portalCheck" class="setup-check is-idle">
+              <div class="setup-check-icon" aria-hidden="true">◎</div>
+              <div><p>Portal de Corrientes</p><h3 id="portalStatus">No verificado aún</h3><span id="portalDetail">Página final de consulta del portal oficial.</span></div>
+            </article>
+            <article id="aiCheck" class="setup-check is-idle">
+              <div class="setup-check-icon" aria-hidden="true">✦</div>
+              <div><p>IA OpenCode</p><h3 id="aiStatus">No verificado aún</h3><span id="aiDetail">Consulta mínima contra el modelo predeterminado.</span></div>
+            </article>
+          </div>
+          <div id="setupRecovery" class="setup-recovery" hidden><p>Revisa ventanas de navegador y completa el desafío Cloudflare para continuar</p></div>
         </div>
-        <p class="setup-intro">Revisamos automáticamente si el navegador y el portal oficial están disponibles. Esto no cambia la consulta local ni impide hacer una pregunta.</p>
-        <div class="setup-checks">
-          <article id="chromeCheck" class="setup-check is-loading">
-            <div class="setup-check-icon" aria-hidden="true">⌁</div>
-            <div><p>Chrome / CDP</p><h3 id="chromeStatus">Comprobando…</h3><span id="chromeDetail">Verificando la conexión con el navegador externo.</span></div>
-          </article>
-          <article id="portalCheck" class="setup-check is-loading">
-            <div class="setup-check-icon" aria-hidden="true">◎</div>
-            <div><p>Portal de Corrientes</p><h3 id="portalStatus">Comprobando…</h3><span id="portalDetail">Probando el acceso público y la protección anti-bot.</span></div>
-          </article>
-        </div>
-        <div id="setupRecovery" class="setup-recovery" hidden>
-          <div class="setup-recovery-heading"><div><p class="eyebrow">SI APARECE CLOUDFLARE</p><h3>Cómo recuperar el acceso</h3></div><button id="copyRecovery" class="copy-button" type="button">Copiar pasos</button></div>
-          <p>Completá el desafío en un Chrome visible y luego volvé a revisar el estado. Los pasos también sirven si Chrome/CDP todavía no está iniciado.</p>
-          <textarea id="recoverySteps" readonly aria-label="Pasos para recuperar el acceso al portal de Corrientes">1. Desde la raíz del proyecto, ejecutá: bash scripts/start-host-chrome.sh
-2. En el archivo .env configurá:
-   JURIS_ACCESS_MODE=browser
-   JURIS_CDP_URL=http://127.0.0.1:9222
-3. Recreá la consulta para tomar la configuración: docker compose up -d --no-deps --force-recreate jurisprudencia-query
-4. En ese Chrome abrí https://jurisprudencia.juscorrientes.gov.ar/.
-5. Completá manualmente el desafío de Cloudflare y esperá a ver el portal.
-6. Volvé a esta pantalla y elegí «Revisar estado».</textarea>
-          <div class="setup-recovery-footer"><span id="copyFeedback" role="status" aria-live="polite"></span><button id="refreshDiagnosis" class="quiet" type="button">Revisar estado ↻</button></div>
-        </div>
-      </section>
+      </details>
 
       <section class="workspace">
         <form id="form" class="card query-card">
           <div class="card-heading"><div><p class="eyebrow">NUEVA CONSULTA</p><h3>¿Qué querés investigar?</h3></div><span class="pill ai-pill"><b>✦</b> IA ASISTIDA</span></div>
           <label for="question">Pregunta en lenguaje natural</label>
           <textarea id="question" required minlength="5" placeholder="Ej.: ¿Qué criterios usa el STJ en fallos de amparo sobre cobertura de salud?"></textarea>
+          <div class="model-picker">
+            <button id="modelToggle" class="model-toggle" type="button" aria-expanded="false" aria-controls="modelMenu">Elegir IA <span>⌄</span></button>
+            <div id="modelMenu" class="model-menu" hidden>
+              <label for="model">Modelo free<select id="model"><option value="">Detectando modelos…</option></select></label>
+              <span id="modelStatus" role="status" aria-live="polite">Actualizando modelos disponibles…</span>
+            </div>
+          </div>
           <div class="filter-grid">
             <label for="year">Año <span>opcional</span><input id="year" type="number" min="1900" max="2100" placeholder="Todos"></label>
             <label for="month">Mes <span>opcional</span><select id="month"><option value="">Todos los meses</option><option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option><option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option><option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option></select></label>
@@ -71,7 +73,7 @@
 
         <aside class="card method-card">
           <p class="eyebrow">CÓMO RESPONDE</p>
-          <div class="method-flow"><div><b>01</b><strong>Busca</strong><span>Filtros nativos<br>del portal remoto</span></div><div><b>02</b><strong>Lee</strong><span>Detalle y PDF<br>de cada fallo</span></div><div><b>03</b><strong>Explica</strong><span>Respuesta con<br>modelo LLM</span></div></div>
+          <div class="method-flow"><div><b>01</b><strong>Busca</strong><span>Metadatos<br>del archivo local</span></div><div><b>02</b><strong>Lee</strong><span>JSON y Markdown<br>de cada fallo</span></div><div><b>03</b><strong>Explica</strong><span>Respuesta con<br>modelo LLM</span></div></div>
           <div class="tech-note"><strong>Modelo</strong><span>OPENCODE_MODEL<br>configurado en Compose</span></div>
           <div class="tech-note"><strong>Fuente</strong><span>JSON primero<br>Markdown después</span></div>
           <a class="doc-link" href="http://localhost:3002/mcp.html">Conocer el MCP construido →</a>
@@ -81,8 +83,19 @@
       <section id="status" class="status-line"></section>
       <section id="error" class="card error" hidden></section>
 
+      <section id="contextReview" class="card context-review" hidden>
+        <div class="section-heading"><div><p class="eyebrow">CONTEXTO DE LA IA</p><h2>Documentos de la búsqueda</h2><p id="contextReviewSubtitle" class="context-subtitle"></p></div><span class="pill">LECTURA LOCAL</span></div>
+        <div class="context-options">
+          <article class="context-option"><strong id="contextCandidateCount">0</strong><span>documentos encontrados</span><button id="showCandidateDocuments" class="quiet" type="button">Ver listado</button></article>
+          <article class="context-option is-sent"><strong id="contextSentCount">0</strong><span>documentos enviados a la IA</span><button id="showSentDocuments" class="quiet" type="button">Ver listado</button></article>
+          <article class="context-option is-omitted"><strong id="contextOmittedCount">0</strong><span>documentos no enviados</span><button id="showOmittedDocuments" class="quiet" type="button">Ver listado</button></article>
+          <article class="context-retry"><button id="retryAllDocuments" class="primary" type="button">Reintentar con todos los documentos <span>↻</span></button><small>Puede superar la ventana de contexto del modelo y terminar en error.</small></article>
+        </div>
+      </section>
+
       <section id="answer" class="card answer-card" hidden>
-        <div class="section-heading"><div><p class="eyebrow">RESPUESTA GENERADA</p><h2>Lectura asistida del material</h2></div><span id="provider-badge" class="pill">ARCHIVO LOCAL + LLM</span></div>
+        <div class="section-heading"><div><p class="eyebrow">RESPUESTA GENERADA</p><h2>Lectura asistida del material</h2></div><div class="answer-actions"><span id="provider-badge" class="pill">ARCHIVO LOCAL + LLM</span><div class="export-picker"><button id="exportToggle" class="quiet" type="button" aria-expanded="false" aria-controls="exportMenu">Exportar Resultados <span>⌄</span></button><div id="exportMenu" class="export-menu" hidden><button type="button" data-export-format="docx">Exportar .docx</button><button type="button" data-export-format="pdf">Exportar .pdf</button></div></div></div></div>
+        <div id="aiError" class="ai-error" hidden></div>
         <div id="answerText" class="answer-text"></div>
         <div class="answer-meta"><span id="meta"></span><span>Verificá siempre el fallo original.</span></div>
       </section>
@@ -97,6 +110,10 @@
           <div id="resultList" class="result-list"></div>
         </div>
       </section>
+
+      <dialog id="documentListDialog" class="document-dialog">
+        <div class="document-dialog-inner"><div class="section-heading"><div><p class="eyebrow">LISTADO DE DOCUMENTOS</p><h2 id="documentDialogTitle">Documentos</h2></div><button id="closeDocumentDialog" class="quiet" type="button">Cerrar</button></div><div class="document-dialog-actions"><button id="copyDocumentList" class="quiet" type="button">Copiar lista</button><span id="copyDocumentStatus" class="muted" role="status" aria-live="polite"></span></div><pre id="documentListText"></pre></div>
+      </dialog>
 
       <details class="technical"><summary>Ver respuesta técnica del MCP</summary><pre id="raw"></pre></details>
       <footer><span>consulta-jurisprudencia / v0.3</span><span>La IA orienta; el documento original es la fuente.</span></footer>

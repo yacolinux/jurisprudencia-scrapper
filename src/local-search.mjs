@@ -39,6 +39,61 @@ function scoreDocument(document, terms) {
   }, 0);
 }
 
+function byteLength(value) {
+  return Buffer.byteLength(String(value ?? ""), "utf8");
+}
+
+function truncateUtf8(value, maxBytes) {
+  const text = String(value ?? "");
+  if (maxBytes <= 0) return "";
+  if (byteLength(text) <= maxBytes) return text;
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (byteLength(text.slice(0, middle)) <= maxBytes) low = middle;
+    else high = middle - 1;
+  }
+  return text.slice(0, low);
+}
+
+function contextDocument(result, markdown = result.content) {
+  return {
+    metadata: result.metadata || {
+      id: result.id,
+      title: result.title,
+      source: result.source,
+      localPath: result.localPath,
+      markdownPath: result.markdownPath,
+      materia: result.materia,
+      fecha: result.fecha,
+      expediente: result.expediente
+    },
+    markdown
+  };
+}
+
+function reviewDocument(result, reason = null) {
+  return {
+    id: result.id,
+    title: result.title,
+    fallo: result.fallo,
+    expediente: result.expediente,
+    materia: result.materia,
+    fecha: result.fecha,
+    source: result.source,
+    pdfUrl: result.pdfUrl,
+    localPath: result.localPath,
+    markdownPath: result.markdownPath,
+    metadataPath: result.metadataPath,
+    ...(reason ? { reason } : {})
+  };
+}
+
+function contextBytes(documents) {
+  return byteLength(JSON.stringify({ search: { total: documents.length }, documents }));
+}
+
 async function fileExists(file) {
   try {
     await access(file, constants.R_OK);
@@ -102,13 +157,14 @@ export function resolveLocalMetadata(root, relativePath) {
 }
 
 export class LocalArchiveSearch {
-  constructor(root, { writeRoot = process.env.DATA_WRITE_DIR || root, pdfScanLimit = Number(process.env.LOCAL_PDF_SCAN_LIMIT || 80), maxPdfChars = Number(process.env.MAX_PDF_CHARS || 18_000), pdfTimeoutMs = Number(process.env.LOCAL_PDF_TIMEOUT_MS || 12_000) } = {}) {
+  constructor(root, { writeRoot = process.env.DATA_WRITE_DIR || root, maxPdfChars = Number(process.env.MAX_PDF_CHARS || 100_000), pdfTimeoutMs = Number(process.env.LOCAL_PDF_TIMEOUT_MS || 12_000), maxContextBytes = Number(process.env.LOCAL_CONTEXT_MAX_BYTES || 100 * 1024), extractText = extractPdfText } = {}) {
     this.root = resolve(root);
     this.writeRoot = resolve(writeRoot);
     this.manifestPath = join(this.root, "manifest.json");
-    this.pdfScanLimit = Math.max(0, pdfScanLimit);
-    this.maxPdfChars = maxPdfChars;
+    this.maxPdfChars = Math.max(1, Number(maxPdfChars) || 100_000);
     this.pdfTimeoutMs = pdfTimeoutMs;
+    this.maxContextBytes = Math.max(1, Number(maxContextBytes) || 100 * 1024);
+    this.extractText = extractText;
   }
 
   async ensureMarkdown(document) {
@@ -122,7 +178,7 @@ export class LocalArchiveSearch {
     let extracted = "";
     try {
       const file = resolveLocalPdf(this.root, document.path);
-      if (await fileExists(file)) extracted = await extractPdfText(file, this.maxPdfChars, this.pdfTimeoutMs);
+      if (await fileExists(file)) extracted = await this.extractText(file, this.maxPdfChars, this.pdfTimeoutMs);
     } catch {
       extracted = "";
     }
@@ -221,7 +277,7 @@ export class LocalArchiveSearch {
     }
   }
 
-  async search({ question = "", searchText = "", filters = {}, limit = 10 } = {}) {
+  async search({ question = "", searchText = "", filters = {}, allDocuments = false } = {}) {
     const manifest = await this.readManifest();
     const terms = termsFrom(searchText || question);
     const requestedMatter = termsFrom(filters.materia || filters.materias?.[0] || "");
@@ -238,27 +294,69 @@ export class LocalArchiveSearch {
       .filter(({ score }) => !terms.length || score > 0)
       .sort((left, right) => right.score - left.score || String(right.document.savedAt || "").localeCompare(String(left.document.savedAt || "")) || right.index - left.index);
     const metadataMatched = matchingCandidates.length > 0;
-    const selected = (metadataMatched ? matchingCandidates : periodCandidates.map((document, index) => ({ document, score: 0, index })))
-      .slice(0, metadataMatched ? Math.min(Number(limit) || 10, 50) : this.pdfScanLimit);
+    // La consulta local no tiene un límite fijo de cantidad. Se materializa y
+    // agrega cada candidato hasta alcanzar el presupuesto del contexto.
+    const selected = metadataMatched
+      ? matchingCandidates
+      : periodCandidates.map((document, index) => ({ document, score: 0, index }));
     const documents = [];
+    const contextDocuments = [];
+    const candidateDocuments = [];
+    const omittedDocuments = [];
     let createdMarkdown = 0;
+    let omittedByContext = 0;
     for (const { document } of selected) {
       const materialized = await this.materialize(document);
       createdMarkdown += materialized.createdMarkdown;
-      const { result } = materialized;
+      let { result } = materialized;
       const content = result.content;
       if (!metadataMatched && terms.length && !terms.some((term) => normalize(content).includes(term))) continue;
+      candidateDocuments.push(reviewDocument(result));
+      const entry = contextDocument(result);
+      const contextLimitBytes = allDocuments ? Number.MAX_SAFE_INTEGER : this.maxContextBytes;
+      const nextBytes = contextBytes([...contextDocuments, entry]);
+      if (nextBytes > contextLimitBytes) {
+        const remaining = contextLimitBytes - contextBytes([...contextDocuments, contextDocument(result, "")]);
+        if (remaining > 0 && content) {
+          const truncated = truncateUtf8(content, remaining);
+          const truncatedEntry = contextDocument(result, truncated);
+          if (contextBytes([...contextDocuments, truncatedEntry]) <= contextLimitBytes) {
+            result = { ...result, content: truncated, contextTruncated: true, pdf: { ...result.pdf, chars: truncated.length, truncated: true } };
+            documents.push(result);
+            contextDocuments.push(truncatedEntry);
+            continue;
+          }
+        }
+        omittedByContext += 1;
+        omittedDocuments.push(reviewDocument(result, "exceso del presupuesto de contexto"));
+        continue;
+      }
       documents.push(result);
+      contextDocuments.push(entry);
     }
-    const visibleDocuments = documents.slice(0, Math.min(Number(limit) || 10, 50));
-    const results = visibleDocuments.map(({ content, pdf, ...result }) => ({ ...result, local: true, hasMarkdown: Boolean(content), pdfAvailable: Boolean(result.pdfUrl) }));
+    const sentIds = new Set(documents.map((document) => String(document.id || document.localPath || document.source)));
+    const results = candidateDocuments.map((candidate) => ({
+      ...candidate,
+      local: true,
+      hasMarkdown: Boolean(documents.find((document) => String(document.id || document.localPath || document.source) === String(candidate.id || candidate.localPath || candidate.source))?.content),
+      pdfAvailable: Boolean(candidate.localPath),
+      contextIncluded: sentIds.has(String(candidate.id || candidate.localPath || candidate.source)),
+      contextOmitted: omittedDocuments.some((document) => String(document.id || document.localPath || document.source) === String(candidate.id || candidate.localPath || candidate.source))
+    }));
     return {
       search: { source: "local-archive", total: results.length, page: 1, totalPages: 1, results },
-      documents: visibleDocuments,
+      documents,
       indexed: manifest.documents.length,
       periodCandidates: periodCandidates.length,
       scannedPdfs: selected.length,
       createdMarkdown,
+      contextBytes: contextBytes(contextDocuments),
+      contextLimitBytes: allDocuments ? null : this.maxContextBytes,
+      contextAllDocuments: allDocuments,
+      contextCandidates: candidateDocuments,
+      contextSent: documents.map((document) => reviewDocument(document)),
+      contextOmitted: omittedDocuments,
+      omittedByContext,
       updatedAt: manifest.updatedAt,
       matchStrategy: metadataMatched ? "metadata" : "pdf-scan"
     };

@@ -91,7 +91,7 @@ JURIS_CDP_URL=http://127.0.0.1:9222
 
 Abrir http://localhost:3002. El directorio data pertenece al proyecto que ejecuta Compose y se puede recorrer manualmente desde el host. El cambio de puertos se aplica al crear o recrear los servicios; modificar docker-compose.yml no reinicia por sí solo un contenedor ya activo.
 
-Al abrir la app de Consulta en http://localhost:3001, el panel “Preparación del acceso remoto” ejecuta automáticamente `GET /api/diagnose` y muestra por separado si Chrome/CDP y el portal de Corrientes están disponibles. La consulta one-shot local sigue habilitada aunque el diagnóstico esté cargando, falle o el portal remoto presente un desafío. Cuando Cloudflare bloquea el acceso, el panel despliega pasos en español para iniciar Chrome con CDP, completar el desafío manualmente y volver a revisar el estado; el botón “Copiar pasos” los copia al portapapeles.
+Al abrir la app de Consulta en http://localhost:3001, el panel colapsable “Verificación de acceso” permanece cerrado hasta que el usuario lo abre. El botón “Verificar” ejecuta secuencialmente tres pruebas: respuesta del CDP local en `http://127.0.0.1:9222`, llegada a la página final de consulta del portal oficial y una respuesta mínima `OK` del modelo free predeterminado de OpenCode. Si CDP falla o el portal queda en un desafío de Cloudflare, solo se muestra el mensaje: “Revisa ventanas de navegador y completa el desafío Cloudflare para continuar”. La consulta local sigue habilitada aunque alguna verificación falle.
 
 ## API de archivo / descarga
 
@@ -106,9 +106,17 @@ Al abrir la app de Consulta en http://localhost:3001, el panel “Preparación d
 
 Las capturas esperan por defecto 4 segundos entre búsquedas remotas consecutivas (`BATCH_SEARCH_DELAY_MS=4000`) para dejar que el banner anti-consultas rápidas del portal termine antes de pasar a otra categoría o página. Si el sitio no informa `totalPages`, la captura termina cuando recibe una página corta o una página repetida, evitando quedar consultando indefinidamente la primera página. `BATCH_DELAY_MS` conserva la pausa independiente entre descargas.
 
-La app de consulta mantiene el endpoint compatible POST /api/query en el puerto 3001, con un cuerpo como { "question": "fallos sobre amparo", "searchText": "", "mode": "single", "includeRemote": false, "filters": {} }.
+La app de consulta mantiene el endpoint compatible POST /api/query en el puerto 3001, con un cuerpo como { "question": "fallos sobre amparo", "searchText": "", "mode": "single", "includeRemote": false, "filters": {} }. Para repetir la consulta sin el presupuesto local de contexto se puede agregar `retryAllDocuments: true`.
+
+`GET /api/models` actualiza y devuelve los modelos free disponibles de OpenCode. La interfaz los muestra en “Elegir IA” y envía el modelo seleccionado junto con cada consulta. El modelo predeterminado es `opencode/muse-spark-1.2-contributor-free`.
+
+La consulta local informa en un frame “Contexto de la IA” cuántos documentos coincidieron con la búsqueda, cuántos fueron enviados dentro del presupuesto de aproximadamente 100 KiB y cuántos quedaron afuera. Cada grupo tiene un listado emergente con botón para copiarlo. “Reintentar con todos los documentos” vuelve a materializar los candidatos locales y elimina ese presupuesto para esa ejecución; puede exceder la ventana del modelo y producir un error explícito.
+
+Los errores de OpenCode se identifican antes de mostrar la respuesta: un timeout se informa como `OPENCODE_TIMEOUT` y un rechazo por exceso de contexto como `OPENCODE_CONTEXT_LIMIT`, con una acción sugerida para el usuario. Si el modelo alcanzó a producir texto antes del fallo, se muestra como respuesta parcial y no como una respuesta completa silenciosa.
 
 Después de cada consulta, la sección Material recuperado incorpora una columna lateral de Fuentes leídas. Allí se muestra el nombre y la ruta relativa de cada archivo utilizado por la respuesta, con accesos directos a su Markdown, al JSON de metadatos y al PDF original cuando están disponibles. Los accesos locales son `/api/local/markdown?path=...`, `/api/local/metadata?path=...` y `/api/local/file?path=...`.
+
+La interfaz ofrece “Exportar Resultados” después de cada consulta, con salida \`.docx\` y \`.pdf\`. Ambos formatos contienen la consulta, el modelo IA utilizado, la respuesta y todas las referencias mostradas en la búsqueda, incluyendo enlaces a \`http://localhost:3001\` para los archivos locales. El límite del cuerpo de exportación es mayor que el de una consulta para admitir listados grandes de referencias.
 
 ## Consulta local y ampliación remota
 
@@ -116,7 +124,7 @@ La consulta trabaja por defecto en modo local y no destructivo respecto de los d
 
 El checkbox Ampliar con consulta remota (MCP) agrega la búsqueda oficial y compara cada resultado por ID/fuente con el repositorio local. Solo para los faltantes solicita el PDF al MCP, lo guarda en la misma nomenclatura humana `año/mes/semana/fecha/materia/archivo.pdf` y crea su `.md` derivado. Nunca reemplaza un PDF, un JSON lateral ni `manifest.json`; el índice adicional `.query-archive.json` se usa para registrar capturas nuevas sin interferir con la aplicación de descarga. La IA recibe exclusivamente los Markdown locales. Si el sitio remoto o Cloudflare no están disponibles, la aplicación conserva la respuesta local y devuelve la advertencia, sin convertir la consulta local en un fallo.
 
-La respuesta de la API incluye queryMode, nonDestructive, sourceReadOnly, derivedMarkdownOnly, derivedMarkdownCreated y sources.local/sources.remote para distinguir el origen de cada material. LOCAL_PDF_SCAN_LIMIT limita el escaneo de PDFs cuando no hay coincidencias en los metadatos.
+La respuesta de la API incluye queryMode, nonDestructive, sourceReadOnly, derivedMarkdownOnly, derivedMarkdownCreated y sources.local/sources.remote para distinguir el origen de cada material. También incluye `contextReview` con `candidateCount`, `sentCount`, `omittedCount`, `candidates`, `sent` y `omitted`. La consulta local no tiene un límite fijo de documentos: incorpora todos los candidatos que entran en `LOCAL_CONTEXT_MAX_BYTES` (por defecto, aproximadamente 100 KiB de JSON y Markdown). Si falta un `.md` para un PDF indicado por su JSON lateral, lo crea previamente mediante `pdftotext`, sin modificar el PDF, el JSON ni `manifest.json`. El límite `REMOTE_MAX_DOCUMENTS` se aplica únicamente a la ampliación remota.
 
 ## Captura de un año completo
 
@@ -139,7 +147,7 @@ El archivo no interpreta ni resume el contenido jurídico. Los PDFs se guardan p
 
 ## MCP
 
-El MCP se implementa en src/server.mjs y ofrece search_jurisprudencia, get_jurisprudencia_detail, get_jurisprudencia_pdf_text, download_jurisprudencia_pdf y diagnose_jurisprudencia_access. La herramienta binaria se usa únicamente desde el checkbox remoto, después de verificar que el ID/fuente no esté archivado localmente. La página http://localhost:3002/mcp.html resume el contrato y el flujo. El modelo usado por la app de consulta se preconfigura en Compose mediante OPENCODE_MODEL, por defecto opencode/nemotron-3.5-lightning-free.
+El MCP se implementa en src/server.mjs y ofrece search_jurisprudencia, get_jurisprudencia_detail, get_jurisprudencia_pdf_text, download_jurisprudencia_pdf y diagnose_jurisprudencia_access. La herramienta binaria se usa únicamente desde el checkbox remoto, después de verificar que el ID/fuente no esté archivado localmente. La página http://localhost:3002/mcp.html resume el contrato y el flujo. El modelo usado por la app de consulta se preconfigura en Compose mediante OPENCODE_MODEL, por defecto opencode/muse-spark-1.2-contributor-free.
 
 ## Publicación
 
