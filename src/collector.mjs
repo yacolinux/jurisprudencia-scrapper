@@ -32,12 +32,13 @@ export function validateBatchInput(input = {}) {
 }
 
 export class BatchCollector {
-  constructor({ client, store, pageSize = 100, maxPages = 500, delayMs = 350 } = {}) {
+  constructor({ client, store, pageSize = 100, maxPages = 500, delayMs = 350, searchDelayMs = 4_000 } = {}) {
     this.client = client;
     this.store = store;
     this.pageSize = pageSize;
     this.maxPages = maxPages;
-    this.delayMs = delayMs;
+    this.delayMs = Math.max(0, Number(delayMs) || 0);
+    this.searchDelayMs = Math.max(0, Number(searchDelayMs) || 0);
   }
 
   async run(input, options = {}) {
@@ -47,7 +48,7 @@ export class BatchCollector {
 
   async #runMonth(input, { onProgress = () => {}, signal } = {}) {
     const { year, month, materias, retry, onlyIds } = validateBatchInput(input);
-    const stats = { year, month, materias, retry, onlyIds, searchStrategy: month === null ? "annual-pagination-local-month" : "annual-pagination-local-filter", monthsCompleted: month === null ? 12 : undefined, searches: 0, pages: 0, candidates: 0, filtered: 0, downloaded: 0, cached: 0, withoutPdf: 0, errors: 0, retries: 0 };
+    const stats = { year, month, materias, retry, onlyIds, searchStrategy: month === null ? "annual-pagination-local-month" : "annual-pagination-local-filter", monthsCompleted: month === null ? 12 : undefined, searches: 0, pages: 0, candidates: 0, filtered: 0, downloaded: 0, cached: 0, withoutPdf: 0, errors: 0, retries: 0, searchDelayMs: this.searchDelayMs };
     const documents = [];
     const seen = new Set();
     const failures = [];
@@ -73,15 +74,18 @@ export class BatchCollector {
       await emit({ phase: "search", materia, materiaIndex: matterIndex + 1, materiaTotal: materias.length, page: 0 });
       for (let page = 1; page <= this.maxPages; page += 1) {
         if (signal?.aborted) throw Object.assign(new Error("La ejecución fue cancelada"), { code: "JOB_CANCELLED" });
+        if (stats.searches > 0 && this.searchDelayMs) await sleep(this.searchDelayMs);
         const search = await this.client.search({ anio: year, materias: [materia], page, perPage: this.pageSize });
         stats.searches += 1;
         stats.pages += 1;
         const results = Array.isArray(search.results) ? search.results : [];
+        let newCandidatesOnPage = 0;
         await emit({ phase: "search", materia, page, pageTotal: search.totalPages, foundOnPage: results.length });
         for (const result of results) {
           const key = result.id ? `id:${result.id}` : result.pdfUrl ? `pdf:${result.pdfUrl}` : `${result.fallo}|${result.fecha}|${result.caratula}`;
           if (seen.has(key)) continue;
           seen.add(key);
+          newCandidatesOnPage += 1;
           stats.candidates += 1;
           if (onlyIds.length && !onlyIds.includes(String(result.id)) && !onlyIds.includes(String(result.pdfUrl || ""))) continue;
           const date = parseCourtDate(result.fecha);
@@ -140,7 +144,10 @@ export class BatchCollector {
             await emit({ phase: "error", materia, item: result, error: error.message });
           }
         }
-        if (!results.length || (Number.isInteger(search.totalPages) && page >= search.totalPages)) break;
+        const hasKnownLastPage = Number.isInteger(search.totalPages) && page >= search.totalPages;
+        const shortPageWithoutTotal = !Number.isInteger(search.totalPages) && results.length < this.pageSize;
+        const repeatedPage = results.length > 0 && newCandidatesOnPage === 0;
+        if (!results.length || hasKnownLastPage || shortPageWithoutTotal || repeatedPage) break;
       }
     }
     } catch (error) {

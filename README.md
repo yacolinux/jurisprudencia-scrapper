@@ -91,6 +91,8 @@ JURIS_CDP_URL=http://127.0.0.1:9222
 
 Abrir http://localhost:3002. El directorio data pertenece al proyecto que ejecuta Compose y se puede recorrer manualmente desde el host. El cambio de puertos se aplica al crear o recrear los servicios; modificar docker-compose.yml no reinicia por sí solo un contenedor ya activo.
 
+Al abrir la app de Consulta en http://localhost:3001, el panel “Preparación del acceso remoto” ejecuta automáticamente `GET /api/diagnose` y muestra por separado si Chrome/CDP y el portal de Corrientes están disponibles. La consulta one-shot local sigue habilitada aunque el diagnóstico esté cargando, falle o el portal remoto presente un desafío. Cuando Cloudflare bloquea el acceso, el panel despliega pasos en español para iniciar Chrome con CDP, completar el desafío manualmente y volver a revisar el estado; el botón “Copiar pasos” los copia al portapapeles.
+
 ## API de archivo / descarga
 
 - `POST /api/jobs` inicia una captura: `{ "year": 2026, "month": 8, "materias": ["Amparo"] }`. `month: "all"` captura el año completo; un array vacío significa todas las materias.
@@ -101,6 +103,8 @@ Abrir http://localhost:3002. El directorio data pertenece al proyecto que ejecut
 - `GET /api/archive/documents?year=2026&month=8` lista PDFs archivados.
 - `GET /api/archive/file?path=...` sirve un PDF ya guardado.
 - `GET /api/health` y `GET /api/diagnose` informan el estado de la app y del acceso remoto.
+
+Las capturas esperan por defecto 4 segundos entre búsquedas remotas consecutivas (`BATCH_SEARCH_DELAY_MS=4000`) para dejar que el banner anti-consultas rápidas del portal termine antes de pasar a otra categoría o página. Si el sitio no informa `totalPages`, la captura termina cuando recibe una página corta o una página repetida, evitando quedar consultando indefinidamente la primera página. `BATCH_DELAY_MS` conserva la pausa independiente entre descargas.
 
 La app de consulta mantiene el endpoint compatible POST /api/query en el puerto 3001, con un cuerpo como { "question": "fallos sobre amparo", "searchText": "", "mode": "single", "includeRemote": false, "filters": {} }.
 

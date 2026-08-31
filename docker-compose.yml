@@ -23,6 +23,7 @@ services:
       BATCH_PAGE_SIZE: ${BATCH_PAGE_SIZE:-100}
       BATCH_MAX_PAGES: ${BATCH_MAX_PAGES:-500}
       BATCH_DELAY_MS: ${BATCH_DELAY_MS:-350}
+      BATCH_SEARCH_DELAY_MS: ${BATCH_SEARCH_DELAY_MS:-4000}
       # Manual por defecto: Cloudflare no se reintenta agresivamente.
       BATCH_RETRY_MODE: ${BATCH_RETRY_MODE:-manual}
       BATCH_RETRY_ATTEMPTS: ${BATCH_RETRY_ATTEMPTS:-2}

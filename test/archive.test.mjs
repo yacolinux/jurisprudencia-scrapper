@@ -51,6 +51,31 @@ test("Todo el año usa la paginación anual compatible y procesa secuencialmente
   assert.equal(calls[0].text, undefined);
 });
 
+test("espera entre búsquedas remotas consecutivas", async () => {
+  const calls = [];
+  const collector = new BatchCollector({
+    client: { search: async () => { calls.push(Date.now()); return { results: [], totalPages: 1 }; } },
+    store: { find: () => null, save: async () => ({ status: "downloaded", document: {} }) },
+    delayMs: 0,
+    searchDelayMs: 25
+  });
+  await collector.run({ year: 2026, month: "all", materias: ["Amparo", "Penal"] });
+  assert.equal(calls.length, 2);
+  assert.ok(calls[1] - calls[0] >= 20);
+});
+
+test("termina una categoría cuando el portal no informa totalPages", async () => {
+  let calls = 0;
+  const collector = new BatchCollector({
+    client: { search: async () => { calls += 1; return { results: [{ id: 1, fecha: "01-01-2018", materia: "Amparo" }], totalPages: null }; } },
+    store: { find: () => ({ id: 1 }), save: async () => ({ status: "downloaded", document: {} }) },
+    delayMs: 0,
+    searchDelayMs: 0
+  });
+  await collector.run({ year: 2018, month: "all", materias: ["Amparo"] });
+  assert.equal(calls, 1);
+});
+
 test("la búsqueda local lee el manifest sin crearlo ni modificarlo", async () => {
   const root = await mkdtemp(join(tmpdir(), "archivo-jurisprudencia-local-test-"));
   try {

@@ -4,6 +4,92 @@ const markdown = (value) => escapeHtml(value).replace(/\*\*(.+?)\*\*/g, "<strong
 const safeUrl = (value) => /^(?:https?:\/\/|\/api\/local\/(?:file|markdown|metadata)\?path=)/i.test(String(value || "")) ? escapeHtml(value) : "";
 const localUrl = (kind, path) => path ? "/api/local/" + kind + "?path=" + encodeURIComponent(path) : "";
 const fileName = (path) => String(path || "").split("/").filter(Boolean).pop() || "archivo sin nombre";
+const recoverySteps = $("recoverySteps").value;
+
+function setSetupCheck(id, state, title, detail) {
+  const check = $(id + "Check");
+  check.className = "setup-check is-" + state;
+  $(id + "Status").textContent = title;
+  $(id + "Detail").textContent = detail;
+}
+
+function setSetupState(state, text) {
+  $("setupState").className = "setup-state is-" + state;
+  $("setupStateText").textContent = text;
+}
+
+function renderDiagnosis(diagnosis) {
+  const cdpReady = diagnosis.cdpReachable === true;
+  const cdpConfigured = diagnosis.cdpConfigured === true;
+  const portalReady = diagnosis.challenge !== true && Number(diagnosis.status) >= 200 && Number(diagnosis.status) < 400;
+
+  if (cdpReady) {
+    setSetupCheck("chrome", "ready", "Disponible", "Chrome externo responde por CDP y puede conservar la sesión del desafío.");
+  } else if (cdpConfigured) {
+    setSetupCheck("chrome", "attention", "No disponible", "CDP está configurado, pero no responde en http://127.0.0.1:9222.");
+  } else if (diagnosis.challenge) {
+    setSetupCheck("chrome", "attention", "Necesario", "No hay Chrome/CDP configurado para completar el desafío de Cloudflare.");
+  } else {
+    setSetupCheck("chrome", "neutral", "No configurado", "No hace falta para este acceso directo; se recomienda si el portal presenta un desafío.");
+  }
+
+  if (portalReady) {
+    setSetupCheck("portal", "ready", "Listo", "El portal oficial respondió sin desafío en esta comprobación.");
+  } else if (diagnosis.challenge) {
+    setSetupCheck("portal", "attention", "Bloqueado por Cloudflare", "El portal respondió con un desafío que requiere una sesión normal de navegador.");
+  } else {
+    setSetupCheck("portal", "attention", "No disponible", diagnosis.message || "El portal no respondió de forma utilizable.");
+  }
+
+  const needsRecovery = diagnosis.challenge === true || (!portalReady && cdpConfigured && !cdpReady);
+  $("setupRecovery").hidden = !needsRecovery;
+  if (diagnosis.challenge) {
+    setSetupState("attention", "Acción necesaria para el portal");
+  } else if (portalReady) {
+    setSetupState("ready", cdpReady ? "Acceso remoto preparado" : "Portal listo para consultar");
+  } else {
+    setSetupState("attention", "Revisá la preparación del acceso");
+  }
+}
+
+async function diagnose() {
+  setSetupState("loading", "Comprobando acceso…");
+  $("setupRecovery").hidden = true;
+  setSetupCheck("chrome", "loading", "Comprobando…", "Verificando la conexión con el navegador externo.");
+  setSetupCheck("portal", "loading", "Comprobando…", "Probando el acceso público y la protección anti-bot.");
+  try {
+    const response = await fetch("/api/diagnose", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "El diagnóstico no está disponible");
+    renderDiagnosis(data);
+  } catch (error) {
+    setSetupState("error", "No se pudo completar el diagnóstico");
+    setSetupCheck("chrome", "unknown", "Sin confirmar", "No se pudo verificar Chrome/CDP desde la aplicación.");
+    setSetupCheck("portal", "unknown", "Sin confirmar", "No se pudo verificar el portal oficial desde la aplicación.");
+    $("setupRecovery").hidden = false;
+    $("copyFeedback").textContent = error.message;
+  }
+}
+
+$("refreshDiagnosis").addEventListener("click", diagnose);
+$("copyRecovery").addEventListener("click", async () => {
+  let copied = false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(recoverySteps);
+      copied = true;
+    }
+  } catch { /* El navegador puede bloquear el portapapeles fuera de un contexto seguro. */ }
+  if (!copied) {
+    $("recoverySteps").focus();
+    $("recoverySteps").select();
+    copied = document.queryCommandSupported?.("copy") ? document.execCommand("copy") : false;
+  }
+  $("copyFeedback").textContent = copied ? "Pasos copiados al portapapeles." : "Pasos seleccionados; presioná Ctrl+C para copiarlos.";
+  setTimeout(() => { $("copyFeedback").textContent = ""; }, 3000);
+});
+
+diagnose();
 
 $("form").addEventListener("submit", async (event) => {
   event.preventDefault();

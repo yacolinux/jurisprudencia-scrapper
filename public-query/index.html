@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Consulta inteligente · STJ Corrientes</title>
+    <script src="/theme.js"></script>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -11,12 +12,43 @@
       <header class="topbar">
         <div class="brand-mark">Q</div>
         <div><p class="eyebrow">CONSULTA INTELIGENTE · STJ CORRIENTES</p><h1>Jurisprudencia asistida</h1></div>
-        <div class="top-actions"><span class="online"><i></i> ARCHIVO LOCAL · NO DESTRUCTIVO</span><a class="quiet" href="http://localhost:3002">Portal principal</a><a class="quiet" href="http://localhost:3000">Archivo local</a></div>
+        <div class="top-actions"><span class="online"><i></i> ARCHIVO LOCAL · NO DESTRUCTIVO</span><a class="quiet" href="http://localhost:3002">Portal principal</a><a class="quiet" href="http://localhost:3000">Archivo local</a><button class="quiet theme-toggle" type="button" aria-pressed="false">Modo oscuro</button></div>
       </header>
 
       <section class="hero">
         <div><p class="kicker">JSON + MARKDOWN + SÍNTESIS</p><h2>Preguntá por un fallo.<br><em>Entendé el contexto.</em></h2><p class="lede">La consulta filtra primero los metadatos archivados y luego lee únicamente los Markdown derivados de los PDFs. El modelo LLM configurado transforma ese material en una respuesta clara y trazable.</p></div>
         <div class="hero-note"><span>FLUJO LOCAL DE IA</span><strong>Filtrar el JSON<br>Leer el Markdown<br>Sintetizar la respuesta</strong></div>
+      </section>
+
+      <section id="setupPanel" class="card setup-panel" aria-labelledby="setup-title">
+        <div class="setup-header">
+          <div><p class="eyebrow">ANTES DE CONSULTAR</p><h2 id="setup-title">Preparación del acceso remoto</h2></div>
+          <div id="setupState" class="setup-state is-loading" role="status" aria-live="polite"><i></i><span id="setupStateText">Comprobando acceso…</span></div>
+        </div>
+        <p class="setup-intro">Revisamos automáticamente si el navegador y el portal oficial están disponibles. Esto no cambia la consulta local ni impide hacer una pregunta.</p>
+        <div class="setup-checks">
+          <article id="chromeCheck" class="setup-check is-loading">
+            <div class="setup-check-icon" aria-hidden="true">⌁</div>
+            <div><p>Chrome / CDP</p><h3 id="chromeStatus">Comprobando…</h3><span id="chromeDetail">Verificando la conexión con el navegador externo.</span></div>
+          </article>
+          <article id="portalCheck" class="setup-check is-loading">
+            <div class="setup-check-icon" aria-hidden="true">◎</div>
+            <div><p>Portal de Corrientes</p><h3 id="portalStatus">Comprobando…</h3><span id="portalDetail">Probando el acceso público y la protección anti-bot.</span></div>
+          </article>
+        </div>
+        <div id="setupRecovery" class="setup-recovery" hidden>
+          <div class="setup-recovery-heading"><div><p class="eyebrow">SI APARECE CLOUDFLARE</p><h3>Cómo recuperar el acceso</h3></div><button id="copyRecovery" class="copy-button" type="button">Copiar pasos</button></div>
+          <p>Completá el desafío en un Chrome visible y luego volvé a revisar el estado. Los pasos también sirven si Chrome/CDP todavía no está iniciado.</p>
+          <textarea id="recoverySteps" readonly aria-label="Pasos para recuperar el acceso al portal de Corrientes">1. Desde la raíz del proyecto, ejecutá: bash scripts/start-host-chrome.sh
+2. En el archivo .env configurá:
+   JURIS_ACCESS_MODE=browser
+   JURIS_CDP_URL=http://127.0.0.1:9222
+3. Recreá la consulta para tomar la configuración: docker compose up -d --no-deps --force-recreate jurisprudencia-query
+4. En ese Chrome abrí https://jurisprudencia.juscorrientes.gov.ar/.
+5. Completá manualmente el desafío de Cloudflare y esperá a ver el portal.
+6. Volvé a esta pantalla y elegí «Revisar estado».</textarea>
+          <div class="setup-recovery-footer"><span id="copyFeedback" role="status" aria-live="polite"></span><button id="refreshDiagnosis" class="quiet" type="button">Revisar estado ↻</button></div>
+        </div>
       </section>
 
       <section class="workspace">

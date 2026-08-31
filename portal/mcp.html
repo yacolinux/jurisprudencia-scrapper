@@ -4,42 +4,59 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MCP · Jurisprudencia</title>
+  <script src="/theme.js"></script>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header class="hero compact">
-    <a class="back" href="/">← Portal principal</a>
-    <p class="eyebrow">DOCUMENTACIÓN</p>
-    <h1>El MCP de jurisprudencia</h1>
-    <p>Una interfaz de herramientas que permite buscar, abrir el detalle y extraer texto de los fallos para que una aplicación o un modelo LLM los pueda analizar.</p>
-  </header>
-  <main class="doc">
-    <section class="panel"><h2>Herramientas disponibles</h2>
-      <dl>
-        <dt>search_jurisprudencia</dt><dd>Busca en el portal remoto con texto, materia, año, tipo y paginación.</dd>
-        <dt>get_jurisprudencia_detail</dt><dd>Recupera el detalle completo de un resultado por su identificador.</dd>
-        <dt>get_jurisprudencia_pdf_text</dt><dd>Herramienta de compatibilidad para descargar un PDF y extraer su texto con un límite configurable.</dd>
-        <dt>download_jurisprudencia_pdf</dt><dd>Devuelve los bytes del PDF en base64 para que la app de consulta archive únicamente un faltante local.</dd>
-        <dt>diagnose_jurisprudencia_access</dt><dd>Comprueba conectividad, challenge de Cloudflare, navegador y API.</dd>
-      </dl>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand-mark">M</div>
+      <div><p class="eyebrow">JURISPRUDENCIA · SUITE LOCAL</p><h1>Documentación del MCP</h1></div>
+      <nav class="top-actions" aria-label="Accesos rápidos">
+        <a class="quiet" href="/">← Portal principal</a>
+        <a class="quiet" href="http://localhost:3001">Consulta</a>
+        <button class="quiet theme-toggle" type="button" aria-pressed="false">Modo oscuro</button>
+      </nav>
+    </header>
+
+    <section class="hero doc-hero">
+      <div><p class="kicker">DOCUMENTACIÓN · HERRAMIENTAS REUTILIZABLES</p><h2>El MCP de<br><em>jurisprudencia.</em></h2><p class="lede">Una interfaz de herramientas que permite buscar, abrir el detalle y extraer texto de los fallos para que una aplicación o un modelo LLM los pueda analizar.</p></div>
+      <div class="hero-note"><span>CONTRATO</span><strong>Buscar<br />Obtener<br />Archivar</strong></div>
     </section>
-    <section class="panel"><h2>Flujo</h2>
-      <pre>Cliente MCP (stdio / JSON-RPC)
+
+    <main class="doc-layout">
+      <section class="card doc-card">
+        <div class="section-heading"><div><p class="eyebrow">HERRAMIENTAS DISPONIBLES</p><h2>Un contrato pequeño y trazable</h2></div><span class="pill">5 TOOLS</span></div>
+        <div class="tool-grid">
+          <article class="tool-card"><span class="tool-index">01</span><code>search_jurisprudencia</code><p>Busca en el portal remoto con texto, materia, año, tipo y paginación.</p></article>
+          <article class="tool-card"><span class="tool-index">02</span><code>get_jurisprudencia_detail</code><p>Recupera el detalle completo de un resultado por su identificador.</p></article>
+          <article class="tool-card"><span class="tool-index">03</span><code>get_jurisprudencia_pdf_text</code><p>Herramienta de compatibilidad para descargar un PDF y extraer su texto con un límite configurable.</p></article>
+          <article class="tool-card"><span class="tool-index">04</span><code>download_jurisprudencia_pdf</code><p>Devuelve los bytes del PDF en base64 para que la app de consulta archive únicamente un faltante local.</p></article>
+          <article class="tool-card"><span class="tool-index">05</span><code>diagnose_jurisprudencia_access</code><p>Comprueba conectividad, challenge de Cloudflare, navegador y API.</p></article>
+        </div>
+      </section>
+
+      <section class="card doc-card flow-card">
+        <div class="section-heading"><div><p class="eyebrow">FLUJO DE DATOS</p><h2>Del cliente al portal oficial</h2></div><span class="pill">STDIO · JSON-RPC</span></div>
+        <pre>Cliente MCP (stdio / JSON-RPC)
           ↓
       src/server.mjs
           ↓
       Cliente HTTP o navegador Chromium
           ↓
       Portal remoto de jurisprudencia</pre>
-      <p>La app de consulta trabaja primero con el archivo local en modo no destructivo. Cuando se activa la opción remota, usa este MCP para localizar resultados y detalles; compara cada uno con la caché por ID o fuente y solicita el PDF solamente si falta. El PDF se guarda ordenadamente en <code>data/</code>, se crea un Markdown lateral sin alterar el original y el modelo configurado en <code>OPENCODE_MODEL</code> lee únicamente ese Markdown.</p>
-    </section>
-    <section class="panel"><h2>Cloudflare y acceso</h2>
-      <p>El acceso HTTP directo puede recibir un challenge. Por eso el cliente admite Chromium/Xvfb y también reutilizar un Chrome externo mediante <code>JURIS_CDP_URL=http://127.0.0.1:9222</code>. Si el challenge no puede resolverse automáticamente, la ejecución queda informada para reintento manual.</p>
-    </section>
-    <section class="panel"><h2>Archivo local</h2>
-      <p>La app de descarga conserva cada PDF en el bind mount local <code>./data</code>, con carpetas por año, mes y fecha. La captura anual recorre la paginación anual y filtra las fechas localmente porque el sitio no ofrece un índice mensual confiable.</p>
-      <p>Fuentes del proyecto: <code>README.md</code>, <code>CLOUDFLARE-WORKAROUND.md</code> y <code>src/server.mjs</code>.</p>
-    </section>
-  </main>
+        <p>La app de consulta trabaja primero con el archivo local en modo no destructivo. Cuando se activa la opción remota, usa este MCP para localizar resultados y detalles; compara cada uno con la caché por ID o fuente y solicita el PDF solamente si falta. El PDF se guarda ordenadamente en <code>data/</code>, se crea un Markdown lateral sin alterar el original y el modelo configurado en <code>OPENCODE_MODEL</code> lee únicamente ese Markdown.</p>
+      </section>
+
+      <div class="doc-split">
+        <section class="card doc-card"><p class="eyebrow">ACCESO REMOTO</p><h2>Cloudflare y navegador</h2><p>El acceso HTTP directo puede recibir un challenge. Por eso el cliente admite Chromium/Xvfb y también reutilizar un Chrome externo mediante <code>JURIS_CDP_URL=http://127.0.0.1:9222</code>. Si el challenge no puede resolverse automáticamente, la ejecución queda informada para reintento manual.</p></section>
+        <section class="card doc-card"><p class="eyebrow">PERSISTENCIA</p><h2>Archivo local</h2><p>La app de descarga conserva cada PDF en el bind mount local <code>./data</code>, con carpetas por año, mes y fecha. La captura anual recorre la paginación anual y filtra las fechas localmente porque el sitio no ofrece un índice mensual confiable.</p></section>
+      </div>
+
+      <section class="card sources-card"><div class="section-heading"><div><p class="eyebrow">FUENTES DEL PROYECTO</p><h2>Para seguir el recorrido</h2></div><span class="pill">REFERENCIAS</span></div><div class="source-list"><div><span class="source-number">01</span><code>README.md</code><p>Arquitectura, configuración, persistencia y operación.</p></div><div><span class="source-number">02</span><code>CLOUDFLARE-WORKAROUND.md</code><p>Contexto y recuperación frente al acceso protegido.</p></div><div><span class="source-number">03</span><code>src/server.mjs</code><p>Contrato stdio, herramientas y respuestas JSON.</p></div></div></section>
+    </main>
+
+    <footer><span>portal-jurisprudencia / v0.3</span><span><a href="/">Portal principal</a><a href="http://localhost:3001">Abrir Consulta ↗</a></span></footer>
+  </div>
 </body>
 </html>

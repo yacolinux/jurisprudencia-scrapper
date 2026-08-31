@@ -249,7 +249,8 @@ const collector = IS_ARCHIVE ? new BatchCollector({
   store: archiveStore,
   pageSize: Number(process.env.BATCH_PAGE_SIZE || 100),
   maxPages: Number(process.env.BATCH_MAX_PAGES || 500),
-  delayMs: Number(process.env.BATCH_DELAY_MS || 350)
+  delayMs: Number(process.env.BATCH_DELAY_MS || 350),
+  searchDelayMs: Number(process.env.BATCH_SEARCH_DELAY_MS ?? 4_000)
 }) : null;
 const jobs = IS_ARCHIVE ? await new JobManager({ dataDir: DATA_DIR, collector, enqueue }).init() : null;
 

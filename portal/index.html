@@ -4,39 +4,57 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Jurisprudencia · Portal</title>
+  <script src="/theme.js"></script>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header class="hero">
-    <p class="eyebrow">JURISPRUDENCIA · SUITE LOCAL</p>
-    <h1>Un punto de entrada para consultar y conservar fallos.</h1>
-    <p>Las aplicaciones trabajan separadas: una consulta el sitio remoto, otra construye un archivo local de PDFs y este portal reúne los accesos y la documentación del MCP.</p>
-  </header>
-  <main>
-    <section class="cards">
-      <a class="card blue" href="http://localhost:3001">
-        <span class="number">01</span><h2>Consulta</h2>
-        <p>Realizá preguntas sobre jurisprudencia y obtené respuestas asistidas con los resultados remotos.</p>
-        <span class="action">Abrir aplicación →</span>
-      </a>
-      <a class="card teal" href="http://localhost:3000">
-        <span class="number">02</span><h2>Descarga / actualización</h2>
-        <p>Capturá meses o un año completo, organizá los PDFs por período y reintentá pendientes.</p>
-        <span class="action">Abrir aplicación →</span>
-      </a>
-      <a class="card dark" href="/mcp.html">
-        <span class="number">03</span><h2>Cómo funciona el MCP</h2>
-        <p>Conocé las herramientas construidas, el flujo de datos y las limitaciones de acceso del sitio.</p>
-        <span class="action">Leer documentación →</span>
-      </a>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand-mark">P</div>
+      <div><p class="eyebrow">JURISPRUDENCIA · SUITE LOCAL</p><h1>Portal principal</h1></div>
+      <nav class="top-actions" aria-label="Accesos rápidos">
+        <span class="online"><i></i> SERVICIOS LOCALES</span>
+        <a class="quiet" href="http://localhost:3001">Consulta</a>
+        <a class="quiet" href="http://localhost:3000">Archivo</a>
+        <button class="quiet theme-toggle" type="button" aria-pressed="false">Modo oscuro</button>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div><p class="kicker">PUNTO DE ENTRADA · STJ CORRIENTES</p><h2>Un punto de entrada para<br><em>consultar y conservar fallos.</em></h2><p class="lede">Las aplicaciones trabajan separadas: una consulta el sitio remoto, otra construye un archivo local de PDFs y este portal reúne los accesos y la documentación del MCP.</p></div>
+      <div class="hero-note"><span>SUITE LOCAL</span><strong>Consultar<br />Conservar<br />Documentar</strong></div>
     </section>
-    <section class="architecture">
-      <p class="eyebrow">ARQUITECTURA</p>
-      <h2>Cuatro aplicaciones, responsabilidades claras</h2>
-      <div class="flow"><span>Portal<br><small>3002</small></span><b>→</b><span>Consulta<br><small>3001</small></span><b>+</b><span>Archivo<br><small>3000</small></span></div>
-      <p>El portal es una puerta de entrada; no ejecuta búsquedas ni mueve PDFs. La configuración de Docker Compose deja cada servicio en su puerto para poder tenerlos disponibles al mismo tiempo.</p>
-    </section>
-  </main>
-  <footer><a href="/mcp.html">Documentación MCP</a> · <a href="https://github.com/yacolinux/jurisprudencia-scrapper">Repositorio</a></footer>
+
+    <main>
+      <section class="portal-grid" aria-label="Aplicaciones de la suite">
+        <a class="portal-card card-blue" href="http://localhost:3001">
+          <div class="portal-card-top"><span class="number">01</span><span class="pill">IA ASISTIDA</span></div>
+          <h3>Consulta</h3>
+          <p>Realizá preguntas sobre jurisprudencia y obtené respuestas asistidas con los resultados remotos.</p>
+          <span class="card-link">Abrir aplicación <b>↗</b></span>
+        </a>
+        <a class="portal-card card-cyan" href="http://localhost:3000">
+          <div class="portal-card-top"><span class="number">02</span><span class="pill">PDF ORIGINAL</span></div>
+          <h3>Descarga / actualización</h3>
+          <p>Capturá meses o un año completo, organizá los PDFs por período y reintentá pendientes.</p>
+          <span class="card-link">Abrir aplicación <b>↗</b></span>
+        </a>
+        <a class="portal-card card-dark" href="/mcp.html">
+          <div class="portal-card-top"><span class="number">03</span><span class="pill">STDIO · JSON-RPC</span></div>
+          <h3>Cómo funciona el MCP</h3>
+          <p>Conocé las herramientas construidas, el flujo de datos y las limitaciones de acceso del sitio.</p>
+          <span class="card-link">Leer documentación <b>↗</b></span>
+        </a>
+      </section>
+
+      <section class="architecture card">
+        <div class="section-heading"><div><p class="eyebrow">ARQUITECTURA</p><h2>Cuatro aplicaciones, responsabilidades claras</h2></div><span class="pill">SERVICIOS SEPARADOS</span></div>
+        <div class="flow"><span>Portal<br><small>3002</small></span><b>→</b><span>Consulta<br><small>3001</small></span><b>+</b><span>Archivo<br><small>3000</small></span><b>↔</b><span>MCP<br><small>stdio</small></span></div>
+        <p>El portal es una puerta de entrada; no ejecuta búsquedas ni mueve PDFs. La configuración de Docker Compose deja cada servicio en su puerto para poder tenerlos disponibles al mismo tiempo.</p>
+      </section>
+    </main>
+
+    <footer><span>portal-jurisprudencia / v0.3</span><span><a href="/mcp.html">Documentación MCP</a><a href="https://github.com/yacolinux/jurisprudencia-scrapper">Repositorio ↗</a></span></footer>
+  </div>
 </body>
 </html>
